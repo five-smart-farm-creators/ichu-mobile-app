@@ -46,4 +46,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, coding standards, GitFlow, Co
 
 ## License
 
-Copyright (c) 2026 Five Smart Farm Creators. See [LICENSE.md](LICENSE.md) for terms.
+Copyright (c) 2026 SmartFarm. All rights reserved. See [LICENSE.md](LICENSE.md) for terms.
