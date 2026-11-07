@@ -7,10 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-07
+
 ### Changed
 - Clarified Flutter contribution standards and agent operating instructions.
-
-## [1.0.0+1] - 2026-11-06
 
 ### Added
 - Initial Flutter application setup configured exclusively for Android and iOS targets.
