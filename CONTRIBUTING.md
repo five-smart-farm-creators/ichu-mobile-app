@@ -55,6 +55,8 @@ Use main for release history and develop for integration. Do not commit directly
 
 Use lowercase kebab-case branch descriptions. Keep branches focused and delete topic branches after they are merged.
 
+Never open a pull request from `develop` to `main`; releases always go through `release/vX.Y.Z`. Do not use other branch prefixes, such as `fix/`, `docs/`, `refactor/`, `chore/`, or `audit/`.
+
 ~~~sh
 git switch develop
 git pull --ff-only origin develop
@@ -66,15 +68,31 @@ git switch -c feature/short-description
 Write commit messages in English using Conventional Commits:
 
 ~~~text
-<type>(optional-scope): <imperative summary>
+<type>(<scope>): <imperative summary>
 ~~~
 
-Keep each commit focused and the summary concise, without a trailing period. Common types include feat, fix, docs, test, refactor, perf, build, ci, chore, and style.
+Keep each commit focused and the summary concise, without a trailing period. Common types include feat, fix, docs, style, refactor, perf, test, build, ci, chore, and revert.
 
 ~~~text
-feat(herd): add animal overview
-fix(auth): handle expired sessions
+feat(cattle-information): add cattle overview
+fix(iam): handle expired sessions
 docs: clarify local setup
+~~~
+
+Commit messages must also follow these rules:
+
+- Start the summary with a lowercase letter, and keep the header at most 72 characters.
+- Use only these scopes: `iam`, `cattle-information`, `iot-assets`, `operations-monitoring`, `planning`, `dashboard-analytics`, `subscription-plans`, `shared`, `i18n`.
+- Use `feat` only for new functionality, `docs` for documentation and diagram changes, and `chore` for changelog, version, or maintenance changes.
+- Do not use the default message of the GitHub web editor, such as `Update file.md`.
+
+Invalid examples:
+
+~~~text
+(Docs): Add user personas
+Update chapter02.md
+feat: add controllers.
+faet: add planning service
 ~~~
 
 ## Changelog
@@ -84,3 +102,9 @@ Record each logical code, configuration, architecture, or documentation change i
 ## Pull requests
 
 Open feature and bugfix pull requests against develop. Include the purpose, a concise summary, relevant checks, and screenshots for user interface changes. Link related issues when applicable, address review feedback, and do not merge until the required review and checks are complete.
+
+## Enforcement
+
+- After cloning, run once: `git config core.hooksPath .githooks`. The `commit-msg` hook rejects invalid messages locally.
+- The `Git Flow checks` GitHub Actions workflow validates the branch name, the pull request target, and every commit message on pull requests to `main` and `develop`.
+- Configure Git with your real name and the email linked to your GitHub account (`git config user.name` and `git config user.email`). `.mailmap` maps previously used alternative identities.
