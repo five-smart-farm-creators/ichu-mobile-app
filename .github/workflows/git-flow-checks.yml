@@ -46,8 +46,14 @@ jobs:
             release/*) range="origin/develop..$HEAD_SHA" ;;
             *) range="$BASE_SHA..$HEAD_SHA" ;;
           esac
+          # The convention is enforced for commits created since its adoption; older history is kept as is.
+          adoption_date="2026-11-07"
           status=0
           for sha in $(git rev-list --no-merges "$range"); do
+            commit_date=$(git log -1 --format=%cs "$sha")
+            if [[ "$commit_date" < "$adoption_date" ]]; then
+              continue
+            fi
             git log -1 --format=%B "$sha" > "$RUNNER_TEMP/commit-message"
             sh .githooks/commit-msg "$RUNNER_TEMP/commit-message" || status=1
           done
