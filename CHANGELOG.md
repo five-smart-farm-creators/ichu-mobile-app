@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Framework-independent IAM identity/account/access contracts, safe authentication failures, and shared credential input rules.
+- Native Firebase, HTTP, and guarded-routing dependencies, with an example for approved public client settings and ignored local overrides.
 - Validated, non-secret API build configuration with HTTPS enforcement outside local development and no default production endpoint.
 - English and Latin American Spanish catalogs, with generated localizations and equal-key checks.
 - A device language preference with English fallback, session-only recovery on storage failures, and ordered writes that prevent stale preferences after timeouts.
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented inward-facing DDD boundaries, configuration setup, mobile accessibility expectations, and bundled asset/font provenance.
 
 ### Changed
+- Raised the minimum iOS deployment target to 15.0 to meet the Firebase plugins' requirements; Android network access is declared and local cleartext API traffic is debug-only.
 - Replaced the starter counter with an explicitly unauthenticated ICHU preview using the web palette and mobile-adapted brand styling.
 
 ## [0.1.0] - 2026-11-07
