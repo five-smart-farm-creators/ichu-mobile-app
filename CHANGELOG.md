@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - English and Latin American Spanish catalogs, with generated localizations and equal-key checks.
 - A device language preference with English fallback, session-only recovery on storage failures, and ordered writes that prevent stale preferences after timeouts.
 - Bundled Outfit and Plus Jakarta Sans fonts with their licenses, plus optimized brand imagery from the web application.
+- Public mobile welcome and terms pages with localized preview notices, scrolling, safe areas, and language selection that preserves navigation.
+- Widget coverage for public navigation, safe configuration notices, large text, screen-reader language selection, and accessibility guidelines.
+
+### Changed
+- Replaced the starter counter with an explicitly unauthenticated ICHU preview using the web palette and mobile-adapted brand styling.
 
 ## [0.1.0] - 2026-11-07
 
