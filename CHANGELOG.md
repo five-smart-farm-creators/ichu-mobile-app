@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bundled Outfit and Plus Jakarta Sans fonts with their licenses, plus optimized brand imagery from the web application.
 - Public mobile welcome and terms pages with localized preview notices, scrolling, safe areas, and language selection that preserves navigation.
 - Widget coverage for public navigation, safe configuration notices, large text, screen-reader language selection, and accessibility guidelines.
+- Documented inward-facing DDD boundaries, configuration setup, mobile accessibility expectations, and bundled asset/font provenance.
 
 ### Changed
 - Replaced the starter counter with an explicitly unauthenticated ICHU preview using the web palette and mobile-adapted brand styling.

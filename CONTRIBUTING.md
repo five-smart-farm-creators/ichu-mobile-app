@@ -42,6 +42,24 @@ flutter test
 
 Add or update tests for changed behavior. Report any checks that could not be run.
 
+### DDD boundaries and Flutter composition
+
+- Organize authorized business capabilities under `lib/features/<context>/`, using Dart `lowercase_with_underscores` names. Only IAM has a public preview so far; do not create the other product contexts or unused folders speculatively.
+- Add `domain/model/` and `domain/repositories/` when models and ports are required. Keep domain code plain Dart: no Flutter, Firebase, platform storage, HTTP clients, or transport serialization.
+- Put use-case coordination in `application/`, adapters in `infrastructure/`, and pages/widgets in `presentation/`. Widgets call application services rather than platform adapters. Future cross-context collaboration must use explicit application facades, not another context's internals.
+- Keep bootstrap, deployment settings, app-wide layout, and theme in `lib/core/` and the app entrypoints. Keep `lib/shared/` business-neutral; do not move IAM rules there for convenience.
+- Use constructor injection and the existing Flutter notification approach. Introduce routing/state packages only for demonstrated requirements, not to recreate Angular or ASP.NET structure mechanically.
+- Reuse the explicit palette in `IchuColors` and `IchuTheme`. Preserve the web brand while adapting layout, navigation, touch targets, and scrolling to mobile. Do not add a dark theme without an approved design.
+- Identify test fixtures as fixtures. Do not show fake sessions or records as a real integration, and do not claim live REST verification unless the backend was reachable and the calls were actually made.
+
+### Localization and accessibility
+
+- English is the default and source catalog. Use neutral Latin American Spanish with correct accents. Localize all user-visible text through the generated `AppLocalizations`; product names and language endonyms are intentional exceptions.
+- Keep identical message keys in `lib/shared/infrastructure/i18n/app_en.arb` and `app_es.arb`. Declare placeholders in the English template. Run `flutter gen-l10n` after changing catalogs; generated Dart is ignored and must not be hand-edited.
+- Keep non-sensitive language preferences separate from authentication data. A storage failure must not prevent opening the app.
+- Preserve text scaling and native safe areas. Use scrollable content, labeled controls, and at least 48 logical-pixel touch targets. Test narrow screens, landscape, and large text in both languages.
+- Bundle licensed brand assets/fonts instead of downloading them at runtime. Keep provenance and third-party licenses accurate in `assets/README.md` and the font folders.
+
 ## Git Flow
 
 Use main for release history and develop for integration. Do not commit directly to either branch.
