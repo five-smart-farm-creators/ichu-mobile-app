@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Validated, non-secret API build configuration with HTTPS enforcement outside local development and no default production endpoint.
 - English and Latin American Spanish catalogs, with generated localizations and equal-key checks.
+- A device language preference with English fallback, session-only recovery on storage failures, and ordered writes that prevent stale preferences after timeouts.
 - Bundled Outfit and Plus Jakarta Sans fonts with their licenses, plus optimized brand imagery from the web application.
 
 ## [0.1.0] - 2026-11-07
