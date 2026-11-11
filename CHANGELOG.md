@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Framework-independent IAM identity/account/access contracts, safe authentication failures, and shared credential input rules.
 - Validated, non-secret API build configuration with HTTPS enforcement outside local development and no default production endpoint.
 - English and Latin American Spanish catalogs, with generated localizations and equal-key checks.
 - A device language preference with English fallback, session-only recovery on storage failures, and ordered writes that prevent stale preferences after timeouts.
