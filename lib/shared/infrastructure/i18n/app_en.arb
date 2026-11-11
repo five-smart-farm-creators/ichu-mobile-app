@@ -1,0 +1,35 @@
+{
+  "@@locale": "en",
+  "appTitle": "ICHU · SmartFarm",
+  "languageLabel": "Language",
+  "languageSaveFailed": "Your language changed for this session, but could not be saved on this device.",
+  "previewLabel": "Mobile preview",
+  "welcomeTitle": "Welcome to ICHU",
+  "welcomeLead": "Your ICHU workspace, closer to your herd.",
+  "herdTagline": "Better care for every herd.",
+  "previewTitle": "The foundation for your mobile workspace",
+  "previewBody": "This build previews the ICHU mobile experience. Sign-in and account management are not available yet. No account data is loaded.",
+  "apiMissing": "API settings have not been provided for this build.",
+  "apiInvalid": "The API settings for this build are not valid.",
+  "environmentInvalid": "The environment settings for this build are not valid.",
+  "termsTitle": "Terms and privacy",
+  "termsBack": "Back to welcome",
+  "termsPreview": "This preview has no sign-in, ranch records, or payments. The information below describes ICHU's service integrations, not features available in this build.",
+  "termsAuthenticationTitle": "Sign-in and accounts",
+  "termsAuthentication": "ICHU uses Firebase Authentication for sign-in. The ICHU API checks account and ranch permissions before returning ranch data. Passwords must only be sent to Firebase Authentication and must never be stored by this app.",
+  "termsRecordsTitle": "Ranch records",
+  "termsRecords": "The ICHU service stores collar telemetry and ranch records for each ranch. Those records are available only to accounts authorized to access that ranch.",
+  "termsPreferencesTitle": "Device preferences",
+  "termsPreferences": "Your selected language is stored on this device. This preview does not store passwords, authentication tokens, or ranch records.",
+  "termsPaymentsTitle": "Payments",
+  "termsPayments": "ICHU's payment service uses Stripe. ICHU does not store card data. Payments are not available in this mobile preview.",
+  "termsContactTitle": "Contact",
+  "termsContact": "Contact SmartFarm about these terms or your data.",
+  "copyright": "© {year} SmartFarm · ICHU",
+  "@copyright": {
+    "description": "Copyright notice using the current calendar year.",
+    "placeholders": {
+      "year": { "type": "int" }
+    }
+  }
+}
