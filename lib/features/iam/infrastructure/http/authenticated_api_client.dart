@@ -8,7 +8,7 @@ import 'package:http/http.dart' as http;
 import '../../domain/model/auth_failure.dart';
 import '../../domain/repositories/authentication_repository.dart';
 
-/// Sends authenticated, same-origin GET requests to the configured API.
+/// Sends authenticated, same-origin account requests to the configured API.
 final class AuthenticatedApiClient {
   AuthenticatedApiClient({
     required Uri baseUri,
@@ -32,8 +32,25 @@ final class AuthenticatedApiClient {
 
   /// Fetches one JSON resource without retaining or retrying an identity token.
   Future<Object?> getJson(String path) async {
+    return _runRequest(() => _sendJson(method: 'GET', path: path));
+  }
+
+  /// Creates one account. This is deliberately the only authenticated POST.
+  Future<Object?> postAccountRegistration(Map<String, Object?> body) async {
+    return _runRequest(() {
+      _validateAccountRegistrationBody(body);
+      return _sendJson(
+        method: 'POST',
+        path: 'accounts',
+        body: body,
+        expectedStatusCode: 201,
+      );
+    });
+  }
+
+  Future<Object?> _runRequest(Future<Object?> Function() operation) async {
     try {
-      return await _getJson(path);
+      return await operation();
     } on AuthFailure {
       rethrow;
     } on TimeoutException {
@@ -47,7 +64,12 @@ final class AuthenticatedApiClient {
     }
   }
 
-  Future<Object?> _getJson(String path) async {
+  Future<Object?> _sendJson({
+    required String method,
+    required String path,
+    Map<String, Object?>? body,
+    int? expectedStatusCode,
+  }) async {
     final uri = _buildUri(path);
     if (!_authentication.isConfigured) {
       throw const AuthFailure(AuthFailureCode.configuration);
@@ -60,6 +82,9 @@ final class AuthenticatedApiClient {
 
     // Deliberately fetch on every call: Firebase handles refresh and a 401 is
     // an account/API rejection, not a signal to retry with another token.
+    if (_authentication.currentUser?.uid != identity.uid) {
+      throw const AuthFailure(AuthFailureCode.accountUnavailable);
+    }
     final token = await _authentication.idToken();
     if (_authentication.currentUser?.uid != identity.uid) {
       throw const AuthFailure(AuthFailureCode.accountUnavailable);
@@ -73,11 +98,16 @@ final class AuthenticatedApiClient {
       throw const AuthFailure(AuthFailureCode.unknown);
     }
 
-    final request = http.Request('GET', uri)
+    final request = http.Request(method, uri)
       ..followRedirects = false
       ..headers['Authorization'] = 'Bearer $token'
       ..headers['Accept'] = 'application/json'
       ..headers['Accept-Language'] = languageTag;
+    if (body != null) {
+      request
+        ..headers['Content-Type'] = 'application/json'
+        ..body = jsonEncode(body);
+    }
 
     if (_authentication.currentUser?.uid != identity.uid) {
       throw const AuthFailure(AuthFailureCode.accountUnavailable);
@@ -88,6 +118,10 @@ final class AuthenticatedApiClient {
       throw const AuthFailure(AuthFailureCode.accountUnavailable);
     }
 
+    if (expectedStatusCode != null &&
+        response.statusCode != expectedStatusCode) {
+      throw _failureForResponse(response, isAccountRegistration: true);
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw _failureForResponse(response);
     }
@@ -149,8 +183,23 @@ final class AuthenticatedApiClient {
     return remaining;
   }
 
-  AuthFailure _failureForResponse(_FetchedResponse response) {
+  AuthFailure _failureForResponse(
+    _FetchedResponse response, {
+    bool isAccountRegistration = false,
+  }) {
     final statusCode = response.statusCode;
+    if (isAccountRegistration) {
+      if (statusCode == 400) {
+        return const AuthFailure(AuthFailureCode.registrationRejected);
+      }
+      if (statusCode == 409) {
+        return AuthFailure(
+          response.body != null && _isAccountAlreadyExists(response.body!)
+              ? AuthFailureCode.accountAlreadyExists
+              : AuthFailureCode.unknown,
+        );
+      }
+    }
     if (statusCode == 401) {
       return AuthFailure(
         response.body != null && _isEmailNotVerified(response.body!)
@@ -173,6 +222,60 @@ final class AuthenticatedApiClient {
       return const AuthFailure(AuthFailureCode.serviceUnavailable);
     }
     return const AuthFailure(AuthFailureCode.unknown);
+  }
+
+  bool _isAccountAlreadyExists(List<int> body) {
+    try {
+      final payload = jsonDecode(utf8.decode(body));
+      return payload is Map<String, dynamic> &&
+          payload['code'] == 'Iam.AccountAlreadyExists';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _validateAccountRegistrationBody(Map<String, Object?> body) {
+    final role = body['role'];
+    if (role == 'Veterinarian' &&
+        body.length == 1 &&
+        body.keys.single == 'role') {
+      return;
+    }
+
+    const managerFields = <String>{
+      'role',
+      'ranchName',
+      'region',
+      'district',
+      'estimatedHeadCount',
+    };
+    if (role != 'RanchManager' ||
+        body.length != managerFields.length ||
+        !body.keys.toSet().containsAll(managerFields)) {
+      throw const AuthFailure(AuthFailureCode.registrationRejected);
+    }
+
+    final name = body['ranchName'];
+    final region = body['region'];
+    final district = body['district'];
+    final headCount = body['estimatedHeadCount'];
+    if (name is! String ||
+        name.trim().isEmpty ||
+        name != name.trim() ||
+        name.trim().length > 160 ||
+        region is! String ||
+        region.trim().isEmpty ||
+        region != region.trim() ||
+        region.trim().length > 120 ||
+        district is! String ||
+        district.trim().isEmpty ||
+        district != district.trim() ||
+        district.trim().length > 120 ||
+        headCount is! int ||
+        headCount < 0 ||
+        headCount > 2147483647) {
+      throw const AuthFailure(AuthFailureCode.registrationRejected);
+    }
   }
 
   bool _isIdentityProviderNotConfigured(List<int> body) {
