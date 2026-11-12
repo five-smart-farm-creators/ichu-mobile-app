@@ -3,8 +3,6 @@ enum AuthFailureCode {
   configuration,
   invalidCredentials,
   registrationRejected,
-  profileRejected,
-  licenseAlreadyRegistered,
   accountAlreadyExists,
   emailNotVerified,
   accountUnavailable,

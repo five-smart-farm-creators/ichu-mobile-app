@@ -42,4 +42,12 @@ void main() {
       expect(original.licenseNumber, ' cmvp-123 ');
     },
   );
+
+  test('immutable profile snapshots compare by their field values', () {
+    final first = profile();
+    final second = profile();
+    expect(first, second);
+    expect(first.hashCode, second.hashCode);
+    expect(first, isNot(profile(years: 1)));
+  });
 }

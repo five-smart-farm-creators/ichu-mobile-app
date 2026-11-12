@@ -18,9 +18,6 @@ final class AuthFailureNotice extends StatelessWidget {
       AuthFailureCode.invalidCredentials => strings.iamErrorInvalidCredentials,
       AuthFailureCode.registrationRejected =>
         strings.iamErrorRegistrationRejected,
-      AuthFailureCode.profileRejected => strings.iamErrorProfileRejected,
-      AuthFailureCode.licenseAlreadyRegistered =>
-        strings.iamErrorLicenseAlreadyRegistered,
       AuthFailureCode.accountAlreadyExists =>
         strings.iamErrorAccountAlreadyExists,
       AuthFailureCode.emailNotVerified => strings.iamErrorEmailNotVerified,

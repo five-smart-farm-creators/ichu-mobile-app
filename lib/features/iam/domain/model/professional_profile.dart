@@ -23,4 +23,14 @@ final class ProfessionalProfile {
     licenseNumber: licenseNumber.trim().toUpperCase(),
     yearsOfExperience: yearsOfExperience,
   );
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProfessionalProfile &&
+      specialty == other.specialty &&
+      licenseNumber == other.licenseNumber &&
+      yearsOfExperience == other.yearsOfExperience;
+
+  @override
+  int get hashCode => Object.hash(specialty, licenseNumber, yearsOfExperience);
 }
