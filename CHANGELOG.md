@@ -17,13 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - English and Latin American Spanish catalogs, with generated localizations and equal-key checks.
 - A device language preference with English fallback, session-only recovery on storage failures, and ordered writes that prevent stale preferences after timeouts.
 - Bundled Outfit and Plus Jakarta Sans fonts with their licenses, plus optimized brand imagery from the web application.
-- Public mobile welcome and terms pages with localized preview notices, scrolling, safe areas, and language selection that preserves navigation.
-- Widget coverage for public navigation, safe configuration notices, large text, screen-reader language selection, and accessibility guidelines.
+- Localized mobile sign-in/recovery forms and terms pages with safe areas, scrolling, explicit configuration failures, and a guarded account summary with real API data only.
+- Widget coverage for guarded navigation, form validation, password clearing, keyboard handling, language persistence, 200% text, and accessibility guidelines.
 - Documented inward-facing DDD boundaries, configuration setup, mobile accessibility expectations, and bundled asset/font provenance.
 
 ### Changed
 - Raised the minimum iOS deployment target to 15.0 to meet the Firebase plugins' requirements; Android network access is declared and local cleartext API traffic is debug-only.
-- Replaced the starter counter with an explicitly unauthenticated ICHU preview using the web palette and mobile-adapted brand styling.
+- Replaced the starter counter and temporary unauthenticated preview with web-aligned IAM pages, stable guarded routing, and session revalidation when the app resumes.
 
 ## [0.1.0] - 2026-11-07
 

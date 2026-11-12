@@ -12,11 +12,15 @@ final class PublicShell extends StatelessWidget {
     required this.language,
     required this.child,
     this.showBackButton = false,
+    this.onBack,
+    this.backLabel,
   });
 
   final LanguageService language;
   final Widget child;
   final bool showBackButton;
+  final VoidCallback? onBack;
+  final String? backLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -36,8 +40,9 @@ final class PublicShell extends StatelessWidget {
                     children: [
                       if (showBackButton)
                         IconButton(
-                          tooltip: strings.termsBack,
-                          onPressed: () => Navigator.of(context).pop(),
+                          tooltip: backLabel ?? strings.termsBack,
+                          onPressed:
+                              onBack ?? () => Navigator.of(context).maybePop(),
                           icon: const Icon(Icons.arrow_back),
                         ),
                       Expanded(

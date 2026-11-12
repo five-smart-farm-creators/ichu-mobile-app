@@ -1,58 +1,177 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-import 'core/config/app_config.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import 'core/layout/public_shell.dart';
 import 'core/layout/terms_page.dart';
 import 'core/theme/ichu_theme.dart';
-import 'features/iam/presentation/pages/welcome_page.dart';
+import 'features/iam/application/services/auth_service.dart';
+import 'features/iam/presentation/pages/login_page.dart';
+import 'features/iam/presentation/pages/recovery_page.dart';
+import 'features/iam/presentation/pages/session_account_page.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/i18n/generated/app_localizations.dart';
 
-/// Composition root. Domain code never resolves platform or UI dependencies.
-final class IchuApp extends StatelessWidget {
+/// Keeps one router for the app lifetime; locale changes never reset navigation.
+final class IchuApp extends StatefulWidget {
   const IchuApp({
     super.key,
     required this.language,
-    required this.config,
+    required this.authentication,
     this.initialRoute = '/',
+    this.onDispose,
   });
 
   final LanguageService language;
-  final AppConfig config;
+  final AuthService authentication;
   final String initialRoute;
+  final VoidCallback? onDispose;
 
   @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: language,
-      builder: (context, _) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-        theme: IchuTheme.light,
-        themeMode: ThemeMode.light,
-        locale: Locale(language.current.code),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        initialRoute: initialRoute,
-        routes: {'/terms': (_) => TermsPage(language: language)},
-        home: Builder(
-          builder: (context) => WelcomePage(
-            language: language,
-            configurationNotice: switch (config.issue) {
-              AppConfigIssue.missingApiUrl => AppLocalizations.of(
-                context,
-              ).apiMissing,
-              AppConfigIssue.invalidApiUrl => AppLocalizations.of(
-                context,
-              ).apiInvalid,
-              AppConfigIssue.invalidEnvironment => AppLocalizations.of(
-                context,
-              ).environmentInvalid,
-              null => null,
-            },
-            onOpenTerms: () => Navigator.of(context).pushNamed('/terms'),
-          ),
+  State<IchuApp> createState() => _IchuAppState();
+}
+
+final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
+  late GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _router = _createRouter();
+    unawaited(widget.authentication.initialize());
+  }
+
+  @override
+  void didUpdateWidget(covariant IchuApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.authentication != widget.authentication) {
+      _router.dispose();
+      _router = _createRouter();
+      unawaited(widget.authentication.initialize());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        widget.authentication.status == SessionStatus.authenticated) {
+      unawaited(widget.authentication.refresh());
+    }
+  }
+
+  void _backFromTerms() {
+    if (_router.canPop()) {
+      _router.pop();
+    } else {
+      _router.go(
+        widget.authentication.status == SessionStatus.authenticated
+            ? '/account'
+            : '/login',
+      );
+    }
+  }
+
+  GoRouter _createRouter() => GoRouter(
+    initialLocation: widget.initialRoute,
+    refreshListenable: widget.authentication,
+    redirect: (context, state) {
+      final signedIn =
+          widget.authentication.status == SessionStatus.authenticated;
+      final path = state.uri.path;
+      if (path == '/') return signedIn ? '/account' : '/login';
+      if (path == '/account' && !signedIn) return '/login';
+      if (signedIn && (path == '/login' || path == '/recover')) {
+        return '/account';
+      }
+      // The only authenticated destination is /account; external return URLs
+      // and unrecognized destinations are never followed.
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/', redirect: (_, _) => '/login'),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => LoginPage(
+          language: widget.language,
+          authentication: widget.authentication,
+          onRecover: () {
+            widget.authentication.clearError();
+            _router.push('/recover');
+          },
+          onOpenTerms: () => _router.push('/terms'),
         ),
       ),
-    );
+      GoRoute(
+        path: '/recover',
+        builder: (context, state) => RecoveryPage(
+          language: widget.language,
+          authentication: widget.authentication,
+          onBack: () {
+            widget.authentication.clearError();
+            _router.go('/login');
+          },
+        ),
+      ),
+      GoRoute(
+        path: '/account',
+        builder: (context, state) => SessionAccountPage(
+          language: widget.language,
+          authentication: widget.authentication,
+          onOpenTerms: () => _router.push('/terms'),
+        ),
+      ),
+      GoRoute(
+        path: '/terms',
+        builder: (context, state) =>
+            TermsPage(language: widget.language, onBack: _backFromTerms),
+      ),
+    ],
+    errorBuilder: (context, state) {
+      final strings = AppLocalizations.of(context);
+      return PublicShell(
+        language: widget.language,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              strings.notFoundTitle,
+              style: Theme.of(context).textTheme.headlineLarge,
+            ),
+            const SizedBox(height: 16),
+            Text(strings.notFoundBody),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => _router.go('/'),
+              child: Text(strings.notFoundBack),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _router.dispose();
+    widget.onDispose?.call();
+    super.dispose();
   }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.language,
+    builder: (context, _) => MaterialApp.router(
+      routerConfig: _router,
+      debugShowCheckedModeBanner: false,
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+      theme: IchuTheme.light,
+      themeMode: ThemeMode.light,
+      locale: Locale(widget.language.current.code),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+    ),
+  );
 }
