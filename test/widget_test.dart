@@ -7,9 +7,11 @@ import 'package:ichu_mobile_app/core/theme/ichu_colors.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/auth_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/authentication_lifecycle.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/registration_service.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/professional_profile_service.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_failure.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_user.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
+import 'package:ichu_mobile_app/features/iam/domain/model/professional_profile.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/login_page.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/session_account_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
@@ -17,6 +19,7 @@ import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 
 import 'support/fake_iam_repositories.dart';
 import 'support/fake_registration_repositories.dart';
+import 'support/fake_professional_profile_repository.dart';
 import 'support/memory_language_preferences.dart';
 
 const _user = AuthUser(
@@ -39,6 +42,8 @@ Future<
     RegistrationService registration,
     FakeIdentityRegistrationRepository registrationIdentity,
     FakeAccountRegistrationRepository registrationAccounts,
+    ProfessionalProfileService profileService,
+    FakeProfessionalProfileRepository profiles,
   })
 >
 pumpApp(
@@ -65,6 +70,11 @@ pumpApp(
     ..account = account;
   final lifecycle = AuthenticationLifecycle(identity);
   final auth = AuthService(authentication: lifecycle, accounts: accounts);
+  final profiles = FakeProfessionalProfileRepository()..account = account;
+  final profileService = ProfessionalProfileService(
+    session: auth,
+    profiles: profiles,
+  );
   final registrationIdentity = FakeIdentityRegistrationRepository()
     ..isConfigured = configured
     ..createUserResult = const AuthUser(
@@ -80,6 +90,7 @@ pumpApp(
     accounts: registrationAccounts,
   );
   addTearDown(() async {
+    profileService.dispose();
     auth.dispose();
     registration.dispose();
     lifecycle.dispose();
@@ -93,6 +104,7 @@ pumpApp(
       language: language,
       authentication: auth,
       registration: registration,
+      profileService: profileService,
       initialRoute: initialRoute,
     ),
   );
@@ -104,6 +116,8 @@ pumpApp(
     registration: registration,
     registrationIdentity: registrationIdentity,
     registrationAccounts: registrationAccounts,
+    profileService: profileService,
+    profiles: profiles,
   );
 }
 
@@ -128,6 +142,64 @@ TextField passwordField(WidgetTester tester) => tester.widget<TextField>(
 );
 
 void main() {
+  testWidgets(
+    'profile deep links remain protected without a validated session',
+    (tester) async {
+      final fixture = await pumpApp(tester, initialRoute: '/account/profile');
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(find.byKey(const Key('profile-save')), findsNothing);
+      expect(fixture.profiles.loadCalls, 0);
+    },
+  );
+
+  testWidgets(
+    'veterinarians can view their profile and logout removes protected data',
+    (tester) async {
+      final fixture = await pumpApp(
+        tester,
+        restored: true,
+        account: const IamAccount(
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'user@example.test',
+          role: AccountRole.veterinarian,
+          status: 'Active',
+          profile: ProfessionalProfile(
+            specialty: 'Bovine health',
+            licenseNumber: 'TEST-123',
+            yearsOfExperience: 5,
+          ),
+        ),
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('account-professional-profile')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account-professional-profile')));
+      await tester.pumpAndSettle();
+      expect(find.text('Professional profile'), findsWidgets);
+      expect(fixture.profiles.loadCalls, 1);
+      expect(find.text('Bovine health'), findsOneWidget);
+      expect(find.byType(EditableText), findsNothing);
+      expect(find.byKey(const Key('profile-save')), findsNothing);
+      expect(await fixture.auth.signOut(), isTrue);
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(find.text('Bovine health'), findsNothing);
+      expect(fixture.profileService.profile, isNull);
+    },
+  );
+
+  testWidgets(
+    'manager account navigation does not advertise a profile editor',
+    (tester) async {
+      await pumpApp(tester, restored: true);
+      expect(
+        find.byKey(const Key('account-professional-profile')),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets(
     'registration uses an isolated identity and cannot grant workspace access',
     (tester) async {

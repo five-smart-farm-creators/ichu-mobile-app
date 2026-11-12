@@ -9,11 +9,13 @@ import 'core/config/app_config.dart';
 import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/authentication_lifecycle.dart';
 import 'features/iam/application/services/registration_service.dart';
+import 'features/iam/application/services/professional_profile_service.dart';
 import 'features/iam/infrastructure/configuration/firebase_client_config.dart';
 import 'features/iam/infrastructure/http/authenticated_api_client.dart';
 import 'features/iam/infrastructure/repositories/firebase_auth_repository.dart';
 import 'features/iam/infrastructure/repositories/firebase_registration_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_account_repository.dart';
+import 'features/iam/infrastructure/repositories/iam_professional_profile_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_account_registration_repository.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/preferences/device_language_preference_repository.dart';
@@ -53,26 +55,30 @@ Future<void> main() async {
           : null,
     ),
   );
+  final api = config.isApiConfigured
+      ? AuthenticatedApiClient(
+          baseUri: config.apiBaseUri!,
+          client: client,
+          authentication: identity,
+          languageTag: () => language.current.code == 'es' ? 'es-419' : 'en-US',
+        )
+      : null;
   final authentication = AuthService(
     authentication: identity,
-    accounts: IamAccountRepository(
-      api: config.isApiConfigured
-          ? AuthenticatedApiClient(
-              baseUri: config.apiBaseUri!,
-              client: client,
-              authentication: identity,
-              languageTag: () =>
-                  language.current.code == 'es' ? 'es-419' : 'en-US',
-            )
-          : null,
-    ),
+    accounts: IamAccountRepository(api: api),
+  );
+  final profileService = ProfessionalProfileService(
+    session: authentication,
+    profiles: IamProfessionalProfileRepository(api: api),
   );
   runApp(
     IchuApp(
       language: language,
       authentication: authentication,
       registration: registration,
+      profileService: profileService,
       onDispose: () {
+        profileService.dispose();
         authentication.dispose();
         registration.dispose();
         identity.dispose();
