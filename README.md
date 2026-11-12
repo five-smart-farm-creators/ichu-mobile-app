@@ -1,8 +1,8 @@
 # ICHU Mobile App
 
-Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication and account registration on the shared mobile foundation.
+Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication, account registration, and own-account professional profiles on the shared mobile foundation.
 
-The completed backend is the functional source of truth for API contracts and business rules. The unfinished Web App supplies visual brand references only; mobile delivery proceeds by bounded context and verified backend use cases, not by copying unfinished browser workflows.
+The implemented backend is the functional source of truth for API contracts and business rules. The report defines mobile product scope; the unfinished Web App supplies visual brand references only. Mobile delivery selects field-oriented use cases, not every backend module or browser workflow. Proposed report endpoints must be checked against implemented contracts before use.
 
 ## Current scope
 
@@ -10,11 +10,27 @@ The completed backend is the functional source of truth for API contracts and bu
 - Session restoration and a guarded account summary that opens only after verified identity and sequential IAM account/access validation.
 - Account registration for the backend-supported veterinarian and ranch-manager roles; manager registration includes the required creation of a new ranch.
 - Email verification and continuation of an existing registration using an isolated native identity session, without replacing the workspace identity.
+- Authenticated, read-only professional profiles with strict nullable response mapping and an explicit reload. Profile writes are not exposed in the UI, application service, repository port, or HTTP client.
 - Scrollable sign-in, recovery, account, and terms pages with safe areas, accessible controls, and large-text/keyboard support.
 - English by default, Latin American Spanish, and a device language preference. Changing the language updates the current page without resetting navigation.
 - Validated, non-secret API and native Firebase settings. Missing settings leave sign-in unavailable without initializing a fabricated Firebase project or loading sample accounts.
 
-**Profile editing, existing-ranch selection, ranch administration, and advisory management remain separate work.** Field operators cannot self-register through the backend registration use case. There are no simulated production sessions or ranch records. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this branch's scope.
+**Existing-ranch selection, ranch administration, and advisory management remain separate work.** Field operators cannot self-register through the backend registration use case. There are no simulated production sessions or ranch records. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this branch's scope.
+
+### Field-focused mobile delivery
+
+The report distinguishes a field client for quick monitoring, alerts, and offline work from the fuller web management experience (`10-introduction.md`, objective at line 146; `40-solution-software-design.md`, container responsibilities). The product mapping in `annex-i-requirements-traceability.md` is the scope reference, not evidence of implemented services. Delivery proceeds sequentially:
+
+1. Finish IAM with safe read-only profiles; preserve veterinarian and ranch-manager onboarding and the backend's existing field-operator role without adding self-registration or inferring permissions.
+2. Select an authorized ranch using the existing IAM access contract. Keep the selection session-bound, clear it on account/access changes, and never expose management-only access codes as general navigation data.
+3. Add animal summaries, recent telemetry, and last known location through actual implemented contracts. Always show available units, capture time, origin, and freshness; missing data is not zero or a healthy state.
+4. Add authorized cloud alert reads and acknowledgement only with the backend's supported identity, idempotency, and concurrency contracts. Validate local Edge connectivity and authorization separately before claiming local alert support.
+5. Add persistent field records and explicit sync outcomes after auditing snapshot/local-authorization and batch-sync contracts. Pending records must survive restart; authorization expiry, rejection, and conflict need deliberate recovery. Do not silently drop unsynced work on logout or expose it to another identity; storage isolation and retention require an explicit security design before this stage.
+6. Review reminders, trough monitoring, and selected veterinarian workflows as later increments rather than copying full web clinical or planning modules.
+
+The initial mobile users are ranch managers and veterinarians. Field-operator task assignment is a product decision still to confirm; existing server role data remains supported. Device inventory administration, geofence editing, payments/subscriptions, detailed analytics, and report exports are not included automatically. Other contexts are created only when an approved mobile use case requires them; the backend's seven-module structure is not a requirement to scaffold seven mobile features.
+
+Each branch starts from updated `develop`, receives contract/security/UX tests, and is published for maintainer review before a separately authorized PR/merge. Next-stage work must not be stacked onto an unapproved feature or committed directly to `develop`.
 
 ## Run locally
 
@@ -97,6 +113,14 @@ The backend's `UserAccount.IsActive(now)` evaluates the block expiry independent
 - A failed verification-email request preserves the created identity for resend/continuation. A failed native cleanup keeps new identity mutations blocked until sign-out retry succeeds. Registration-service disposal invalidates late work and preserves native cleanup intent; a late server POST may already have committed and is never represented as an authenticated workspace.
 - Uncertain outcomes are tracked per Firebase UID within the service lifetime. Cancelling one identity cannot force a different identity into its reconciliation flow; returning to the original UID still requires its own safe check. This is not a persisted idempotency ledger: after process restart, an explicit creation attempt may return the backend's duplicate-account conflict and then be reconciled.
 
+### Professional profile contract
+
+- `GET /api/v1/profiles/me` returns the authenticated caller's complete account resource, including a nullable `profile`. The existing `GET /accounts/me` carries the same typed profile data. No account ID is accepted to select another person's account.
+- Specialty is nonblank and bounded to 120 characters; license is nonblank and bounded to 80. Mapping follows backend trimming and uppercase-license normalization, without a license regex or specialty allowlist. Experience must be an integer from 0 through 2147483647; malformed non-null profile resources fail closed.
+- GET supports every server-authorized verified role, including accounts returned with a historical block status after expiry. Veterinarians have the normal navigation entry; other roles can open a direct protected read-only route. No account-ID selector or mutation path is offered.
+- Profile editing is deliberately deferred. The backend exposes a full-replacement PUT but no conditional-write/version or operation-result guarantee. A timeout does not cancel server processing: a subsequent GET can precede that delayed PUT, so it cannot prove settlement or safely unlock another save. This mobile client includes no dormant PUT implementation, simulated completion, or client-invented concurrency token. Future editing requires a separately reviewed backend guarantee and ordering tests.
+- A separate application service observes the validated session and discards profile data/results on logout, UID/account/role changes, or session revalidation. Concurrent equivalent loads share one request. A 401/403 clears the profile; an explicit authorized GET may recover access without reopening cached data prematurely. Raw server titles, payloads, and tokens are not logged or presented as error messages.
+
 ### Structure
 
 ```text
@@ -110,9 +134,9 @@ lib/
   features/
     iam/
       domain/                       # Identity, account, permissions, errors, ports
-      application/services/         # Session/recovery coordination
+      application/services/         # Session, registration, and profile reads
       infrastructure/               # Native Firebase and authenticated REST adapters
-      presentation/                 # Login, recovery, guarded account summary
+      presentation/                 # IAM flows, guarded account and profile views
   shared/
     domain/model/                   # Framework-independent language values
     domain/repositories/            # Preference persistence port
@@ -124,7 +148,7 @@ lib/
 
 Dependencies point inward. Domain code is plain Dart, without Flutter, HTTP, Firebase, or JSON transport dependencies. Application services coordinate ports; presentation never accesses platform storage directly. Constructor injection is used instead of a global service locator. `ChangeNotifier` supplies notifications in the language and session application services, not in domain models.
 
-`go_router` owns the stable route graph: `/login`, `/recover`, `/register`, `/terms`, and protected `/account`; `/` selects login or account. A validated workspace identity cannot open registration. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and the session service drives authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
+`go_router` owns the stable route graph: `/login`, `/recover`, `/register`, `/terms`, protected `/account`, and its protected `/account/profile` child; `/` selects login or account. A validated workspace identity cannot open registration. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and the session service drives authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
 
 `shared_preferences` is used only for the language preference. Flutter's `flutter_localizations`, `intl`, and `gen_l10n` provide localizations. `firebase_core` / `firebase_auth` provide native identity, `http` provides the bounded REST transport, and `go_router` provides guarded navigation. The fonts and images are bundled and never fetched at runtime. See [assets/README.md](assets/README.md) for provenance and font licenses.
 
@@ -167,6 +191,19 @@ Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
 - Source/test directories were audited for `lowercase_with_underscores`; no invalid names were found. Platform-required native folders, identifiers, and cloud registrations were not renamed or changed.
 - Native identity creation, verification email delivery, and live account/ranch creation remain **unverified**. Public Firebase setup is still missing, and Render continues to return 503 `Service Suspended`. Synthetic test results must not be presented as live integration.
 - iOS build/run still requires macOS/Xcode. The existing upstream Firebase/Kotlin warning remains; the current debug build succeeds.
+
+### Read-only profile branch verification
+
+Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
+
+- Formatting and static analysis pass; the full suite has **273 passing tests**. A separate production-configuration run has **25 passing tests**. The count replaces the earlier unpublished editor suite: write-only cases were removed with the unsupported mutation feature, not presented as coverage for the read-only product.
+- Read tests cover complete-account/nullable-profile mapping, backend field bounds, each known role, fresh SDK tokens, fixed own-account routes, disabled redirects, safe errors, and no automatic replay. Service tests cover deduplicated loads, denied-read recovery, failed refresh, and stale responses across logout, disposal, UID changes, and same-UID revalidation with unchanged or changed account/role.
+- Widget tests cover the protected route, server-loaded values without form/save controls, empty/error/loading states, service replacement, long values, EN/ES, Android/iOS theme platforms, 320-pixel portrait and landscape layouts at 200% text, keyboard insets, labeled controls, tap targets, and contrast. These iOS-themed widget tests are not an iOS native build or device run.
+- The final Android debug APK builds and runs on the Android API 37 emulator. The emulator initially remained offline; a cold start without loading its saved snapshot restored it. Native regression checks pass for public registration/recovery/terms navigation, EN/ES preservation, unavailable-configuration submission guards, and persistent language after restart. Launching with `/account/profile` without a session returns to sign-in. Public screenshots were reviewed locally; captures and build output are not committed.
+- Source/test folders and Dart filenames pass the naming audit. No tracked unused placeholder folders were found: required native targets, generated local build folders, fonts, and licenses were preserved. Unused profile editor/mutation code and localization entries were removed instead of leaving dormant features.
+- A read-only security review found no P1/P2 findings in this snapshot. Profile editing remains deferred because the backend does not guarantee settlement or ordering of an ambiguous PUT; no profile mutation exists in the client.
+- The latest public `/health` check returned **200**; the service is no longer assumed suspended based on earlier branch checks. Live native authentication and authenticated profile responses remain **unverified**, because approved Firebase options/native registrations are still missing. Test identities/resources are synthetic only; no cloud registrations, native identifiers, or backend files were changed.
+- Native iOS validation still requires macOS/Xcode. The documented upstream Firebase/Kotlin warning persists, but the current debug APK builds successfully. This is not a signed store release or completion of the later ranch, animal, alert, Edge, or offline stages.
 
 ## Contributing
 

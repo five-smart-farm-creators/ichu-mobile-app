@@ -32,7 +32,7 @@ void main() {
     expect(tester.widget<FilledButton>(submit).onPressed, isNull);
     expect(
       find.text(
-        'Sign-in is unavailable. Check the Firebase and API settings for this build.',
+        'Account access is unavailable. Check the Firebase and API settings for this build.',
       ),
       findsOneWidget,
     );

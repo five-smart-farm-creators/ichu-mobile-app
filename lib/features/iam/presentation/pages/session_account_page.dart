@@ -14,11 +14,13 @@ final class SessionAccountPage extends StatelessWidget {
     required this.language,
     required this.authentication,
     required this.onOpenTerms,
+    required this.onOpenProfile,
   });
 
   final LanguageService language;
   final AuthService authentication;
   final VoidCallback onOpenTerms;
+  final VoidCallback onOpenProfile;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -90,6 +92,15 @@ final class SessionAccountPage extends StatelessWidget {
             if (authentication.error != null)
               AuthFailureNotice(failure: authentication.error!),
             const SizedBox(height: 20),
+            if (account.role == AccountRole.veterinarian) ...[
+              OutlinedButton.icon(
+                key: const Key('account-professional-profile'),
+                onPressed: onOpenProfile,
+                icon: const Icon(Icons.badge_outlined),
+                label: Text(strings.iamProfessionalProfile),
+              ),
+              const SizedBox(height: 12),
+            ],
             FilledButton.icon(
               key: const Key('account-sign-out'),
               onPressed: () => authentication.signOut(),

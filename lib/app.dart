@@ -8,9 +8,11 @@ import 'core/layout/terms_page.dart';
 import 'core/theme/ichu_theme.dart';
 import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/registration_service.dart';
+import 'features/iam/application/services/professional_profile_service.dart';
 import 'features/iam/presentation/pages/login_page.dart';
 import 'features/iam/presentation/pages/recovery_page.dart';
 import 'features/iam/presentation/pages/registration_page.dart';
+import 'features/iam/presentation/pages/professional_profile_page.dart';
 import 'features/iam/presentation/pages/session_account_page.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/i18n/generated/app_localizations.dart';
@@ -22,6 +24,7 @@ final class IchuApp extends StatefulWidget {
     required this.language,
     required this.authentication,
     required this.registration,
+    required this.profileService,
     this.initialRoute = '/',
     this.onDispose,
   });
@@ -29,6 +32,7 @@ final class IchuApp extends StatefulWidget {
   final LanguageService language;
   final AuthService authentication;
   final RegistrationService registration;
+  final ProfessionalProfileService profileService;
   final String initialRoute;
   final VoidCallback? onDispose;
 
@@ -85,13 +89,14 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           widget.authentication.status == SessionStatus.authenticated;
       final path = state.uri.path;
       if (path == '/') return signedIn ? '/account' : '/login';
-      if (path == '/account' && !signedIn) return '/login';
+      if ((path == '/account' || path == '/account/profile') && !signedIn) {
+        return '/login';
+      }
       if (signedIn &&
           (path == '/login' || path == '/recover' || path == '/register')) {
         return '/account';
       }
-      // The only authenticated destination is /account; external return URLs
-      // and unrecognized destinations are never followed.
+      // External return URLs and unrecognized destinations are never followed.
       return null;
     },
     routes: [
@@ -135,7 +140,18 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           language: widget.language,
           authentication: widget.authentication,
           onOpenTerms: () => _router.push('/terms'),
+          onOpenProfile: () => _router.push('/account/profile'),
         ),
+        routes: [
+          GoRoute(
+            path: 'profile',
+            builder: (context, state) => ProfessionalProfilePage(
+              language: widget.language,
+              profileService: widget.profileService,
+              onBack: () => _router.go('/account'),
+            ),
+          ),
+        ],
       ),
       GoRoute(
         path: '/terms',
