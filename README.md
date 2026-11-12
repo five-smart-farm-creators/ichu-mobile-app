@@ -1,6 +1,6 @@
 # ICHU Mobile App
 
-Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements existing-account IAM authentication on the shared mobile foundation.
+Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication and account registration on the shared mobile foundation.
 
 The completed backend is the functional source of truth for API contracts and business rules. The unfinished Web App supplies visual brand references only; mobile delivery proceeds by bounded context and verified backend use cases, not by copying unfinished browser workflows.
 
@@ -8,11 +8,13 @@ The completed backend is the functional source of truth for API contracts and bu
 
 - Sign-in and password recovery through the native Firebase Authentication SDK, with the web app's palette, Outfit headings, Plus Jakarta Sans body text, and Andean herd imagery.
 - Session restoration and a guarded account summary that opens only after verified identity and sequential IAM account/access validation.
+- Account registration for the backend-supported veterinarian and ranch-manager roles; manager registration includes the required creation of a new ranch.
+- Email verification and continuation of an existing registration using an isolated native identity session, without replacing the workspace identity.
 - Scrollable sign-in, recovery, account, and terms pages with safe areas, accessible controls, and large-text/keyboard support.
 - English by default, Latin American Spanish, and a device language preference. Changing the language updates the current page without resetting navigation.
 - Validated, non-secret API and native Firebase settings. Missing settings leave sign-in unavailable without initializing a fabricated Firebase project or loading sample accounts.
 
-**Account registration, profile editing, ranch selection, and advisory management remain separate work.** There are no simulated production sessions or ranch records. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this branch's scope.
+**Profile editing, existing-ranch selection, ranch administration, and advisory management remain separate work.** Field operators cannot self-register through the backend registration use case. There are no simulated production sessions or ranch records. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this branch's scope.
 
 ## Run locally
 
@@ -60,7 +62,7 @@ flutter run --dart-define-from-file=config.local.json
 | `ICHU_FIREBASE_IOS_APP_ID` | Approved Firebase iOS app ID. |
 | `ICHU_FIREBASE_IOS_BUNDLE_ID` | Approved iOS bundle identifier matching the installed target and Firebase registration. |
 
-Options are passed programmatically to a named Firebase app; no generated service-account credentials, `google-services.json`, or `GoogleService-Info.plist` are needed by this implementation. Unsupported platforms and incomplete/malformed native settings never initialize a Firebase client. Existing Firebase apps must match the requested project/options before reuse.
+Options are passed programmatically to named Firebase apps: `ichu-iam-mobile` for workspace authentication and `ichu-registration-mobile` for onboarding. Both use the same approved public project/native options; these are local SDK app instances, not additional cloud app registrations. No generated service-account credentials, `google-services.json`, or `GoogleService-Info.plist` are needed by this implementation. Unsupported platforms and incomplete/malformed native settings never initialize a Firebase client. Existing named Firebase apps must match the requested options before reuse.
 
 Firebase app IDs use the native `1:<sender-id>:android:<app-hash>` or `1:<sender-id>:ios:<app-hash>` format. They are not Android package names or iOS bundle identifiers; use the actual values issued by the Firebase project owner.
 
@@ -82,6 +84,20 @@ Firebase app IDs use the native `1:<sender-id>:android:<app-hash>` or `1:<sender
 The backend's `UserAccount.IsActive(now)` evaluates the block expiry independently of its persisted status label. After expiry, both protected endpoints can return success while `AccountResource.status` still reads `TemporarilyBlocked`. Mobile respects those successful server decisions rather than applying the unfinished web client's literal-`Active` gate or inventing a local clock-based unlock. The account view reports server-validated access, not a fabricated `Active` status. An active block's 401, or rejection by either endpoint, always keeps the app unauthorized.
 
 ## Architecture
+
+### Registration contract and lifecycle
+
+- The backend permits `RanchManager` and `Veterinarian` registration, not `FieldOperator`. Veterinarians submit only `role`; managers also submit `ranchName`, `region`, `district`, and `estimatedHeadCount`. Email and UID come from the bearer identity, never from the request body. Passwords go only to Firebase.
+- Ranch names have a 160-character limit; region and district have 120-character limits. The animal count is nonnegative and must fit the backend request's Int32 representation. Email inputs support the backend's 254-character limit. The mobile creation form uses an 8–128-character nonblank password UX bound; Firebase project password policy may apply additional requirements. Existing-identity sign-in/continuation accepts a nonblank password up to 128 characters without imposing the new-account minimum. These are not backend registration password rules.
+- Native identity creation sends a verification email. Returning users can continue with the already-created Firebase identity instead of creating it again. Restoring an onboarding identity sends no automatic email and submits no automatic account-creation request.
+- The mobile flow explicitly reloads the user, refreshes verification claims, and waits for a verified identity before account submission. **This is a mobile flow decision, not a backend guarantee:** backend integration tests also permit an authenticated unverified identity to create a `PendingVerification` account, despite the endpoint description. This branch does not modify that server behavior.
+- `POST /api/v1/accounts` returns `{account, ranchId}` with a pending account. That acknowledgement is not a workspace session. The isolated identity is signed out after success; normal workspace sign-in later performs the backend account activation and sequential access checks.
+- Registration is not idempotent: duplicate email/UID returns `409 Iam.AccountAlreadyExists`. No POST is automatically retried. After an ambiguous outcome or conflict, the explicit reconciliation action checks the identity-bound `GET /accounts/me` instead of replaying creation; that verified GET can activate an already-created account. It does not grant a mobile workspace session by itself.
+- Onboarding uses a separate named SDK identity so the existing verified-account observer cannot reject a newly created unverified identity, and a restored workspace identity cannot be replaced by registration. Both lifecycles use the same native mutation/cleanup coordinator implementation. Cancellation signs out the isolated session; it does not delete Firebase users, accounts, or ranches.
+- A failed verification-email request preserves the created identity for resend/continuation. A failed native cleanup keeps new identity mutations blocked until sign-out retry succeeds. Registration-service disposal invalidates late work and preserves native cleanup intent; a late server POST may already have committed and is never represented as an authenticated workspace.
+- Uncertain outcomes are tracked per Firebase UID within the service lifetime. Cancelling one identity cannot force a different identity into its reconciliation flow; returning to the original UID still requires its own safe check. This is not a persisted idempotency ledger: after process restart, an explicit creation attempt may return the backend's duplicate-account conflict and then be reconciled.
+
+### Structure
 
 ```text
 lib/
@@ -108,7 +124,7 @@ lib/
 
 Dependencies point inward. Domain code is plain Dart, without Flutter, HTTP, Firebase, or JSON transport dependencies. Application services coordinate ports; presentation never accesses platform storage directly. Constructor injection is used instead of a global service locator. `ChangeNotifier` supplies notifications in the language and session application services, not in domain models.
 
-`go_router` owns the stable route graph: `/login`, `/recover`, `/terms`, and protected `/account`; `/` selects login or account. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and the session service drives authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
+`go_router` owns the stable route graph: `/login`, `/recover`, `/register`, `/terms`, and protected `/account`; `/` selects login or account. A validated workspace identity cannot open registration. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and the session service drives authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
 
 `shared_preferences` is used only for the language preference. Flutter's `flutter_localizations`, `intl`, and `gen_l10n` provide localizations. `firebase_core` / `firebase_auth` provide native identity, `http` provides the bounded REST transport, and `go_router` provides guarded navigation. The fonts and images are bundled and never fetched at runtime. See [assets/README.md](assets/README.md) for provenance and font licenses.
 
@@ -141,6 +157,16 @@ Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-11:
 - Session/SDK/HTTP tests use synthetic fixtures, including cleanup across service disposal/replacement, latched sign-out retries, and backend-authorized historical block status. They do not demonstrate real Firebase sign-in, password-reset delivery, or authenticated REST responses.
 - Live integration remains blocked: the Render `/health` endpoint returns **503** with a `Service Suspended` page, and approved native Firebase options/registrations have not been supplied. No project registrations or native identifiers were changed.
 - iOS build/run remains unverified because this host does not provide macOS/Xcode. This debug build is not a signed store release.
+
+### Registration branch verification
+
+Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
+
+- Formatting and static analysis pass; the expanded suite has **217 passing tests**, including verification-before-POST, both permitted registration roles, unknown-outcome reconciliation, UID switching, cancellation/disposal races, password hygiene, EN/ES layouts at 200% text, and accessibility checks. A separate run of the 25 API configuration tests also passes with production defines.
+- The final Android debug APK builds and runs on the Android API 37 emulator. Native checks cover registration entry/back navigation, EN/ES page preservation, blocked submission without approved settings, existing public recovery/terms flows, and persistent language after force-stop/relaunch.
+- Source/test directories were audited for `lowercase_with_underscores`; no invalid names were found. Platform-required native folders, identifiers, and cloud registrations were not renamed or changed.
+- Native identity creation, verification email delivery, and live account/ranch creation remain **unverified**. Public Firebase setup is still missing, and Render continues to return 503 `Service Suspended`. Synthetic test results must not be presented as live integration.
+- iOS build/run still requires macOS/Xcode. The existing upstream Firebase/Kotlin warning remains; the current debug build succeeds.
 
 ## Contributing
 

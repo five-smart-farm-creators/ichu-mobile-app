@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Widget coverage for guarded navigation, form validation, password clearing, keyboard handling, language persistence, 200% text, and accessibility guidelines.
 - Documented inward-facing DDD boundaries, configuration setup, mobile accessibility expectations, and bundled asset/font provenance.
 - Documented native Firebase setup, session/transport guarantees, verified Android checks, and the remaining live-service and iOS validation blockers.
+- Documented registration contracts, isolated identity ownership, per-UID reconciliation, remaining native/live-service limits, and source/test folder naming standards.
 
 ### Changed
 - Aligned mobile email inputs with the backend's 254-character bound and kept new-account password rules separate from existing-identity sign-in validation.
