@@ -46,8 +46,8 @@
   "iamRoleManager": "Ranch manager",
   "iamRoleVeterinarian": "Veterinarian",
   "iamRoleOperator": "Field operator",
-  "iamAccountStatus": "Account status",
-  "iamAccountActive": "Active",
+  "iamAccountAccess": "Account access",
+  "iamAccountAuthorized": "Validated by ICHU",
   "iamRanchCount": "Authorized ranches: {count}",
   "@iamRanchCount": {
     "description": "Number of ranch access records returned by the authenticated IAM API.",

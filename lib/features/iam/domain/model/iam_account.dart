@@ -12,9 +12,9 @@ final class IamAccount {
   final String id;
   final String email;
   final AccountRole role;
-  final String status;
 
-  bool get isActive => status.trim().toLowerCase() == 'active';
+  /// Stored server label, not an authorization decision or a local lock timer.
+  final String status;
 
   bool matchesEmail(String identityEmail) =>
       email.trim().toLowerCase() == identityEmail.trim().toLowerCase();

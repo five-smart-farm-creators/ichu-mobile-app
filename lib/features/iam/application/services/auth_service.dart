@@ -7,7 +7,7 @@ import '../../domain/model/auth_user.dart';
 import '../../domain/model/iam_account.dart';
 import '../../domain/model/ranch_access.dart';
 import '../../domain/repositories/account_repository.dart';
-import '../../domain/repositories/authentication_repository.dart';
+import 'authentication_lifecycle.dart';
 
 enum SessionStatus {
   checking,
@@ -19,12 +19,13 @@ enum SessionStatus {
 }
 
 final class AuthService extends ChangeNotifier {
-  AuthService({required this._authentication, required this._accounts});
+  AuthService({required this._authentication, required this._accounts}) {
+    _authentication.addListener(_onAuthenticationLifecycleChanged);
+  }
 
-  final AuthenticationRepository _authentication;
+  final AuthenticationLifecycle _authentication;
   final AccountRepository _accounts;
   final Set<String> _suppressedUids = <String>{};
-  final Map<int, _PendingSignIn> _pendingSignIns = <int, _PendingSignIn>{};
   final Completer<void> _disposedCompleter = Completer<void>();
 
   SessionStatus _status = SessionStatus.checking;
@@ -52,7 +53,9 @@ final class AuthService extends ChangeNotifier {
       _status == SessionStatus.checking ||
       _status == SessionStatus.signingIn ||
       _status == SessionStatus.signingOut ||
-      _hasSupersededSignInPending;
+      _authentication.busy;
+
+  bool get requiresSignOut => _authentication.cleanupFailure != null;
 
   bool get canSignIn => _authentication.isConfigured && _accounts.isConfigured;
 
@@ -92,6 +95,10 @@ final class AuthService extends ChangeNotifier {
 
   Future<bool> signIn(String email, String password) async {
     if (_disposed || _isCommandInProgress) return false;
+    if (requiresSignOut) {
+      _setUnavailable(const AuthFailure(AuthFailureCode.signOutFailed));
+      return false;
+    }
     if (!canSignIn) {
       final rejectedUid = _validatingUid ?? _user?.uid ?? _currentUid;
       if (rejectedUid != null) _suppressedUids.add(rejectedUid);
@@ -105,20 +112,12 @@ final class AuthService extends ChangeNotifier {
 
     final previousUid = _user?.uid ?? _currentUid;
     final generation = _beginCommand(SessionStatus.signingIn);
-    final pendingSignIn = _PendingSignIn();
-    _pendingSignIns[generation] = pendingSignIn;
     if (previousUid != null) _suppressedUids.add(previousUid);
     AuthUser? identity;
 
     try {
       identity = await _authentication.signIn(email.trim(), password);
-      pendingSignIn.nativeRequestPending = false;
-      if (!_isCurrent(generation)) {
-        if (pendingSignIn.superseded) {
-          await _finishSupersededSignIn(pendingSignIn, identity);
-        }
-        return false;
-      }
+      if (!_isCurrent(generation)) return false;
 
       final snapshot = await Future.any<_SessionSnapshot?>([
         _loadAuthorizedSession(identity, generation: generation),
@@ -130,13 +129,7 @@ final class AuthService extends ChangeNotifier {
       _setAuthenticated(snapshot);
       return true;
     } catch (error) {
-      pendingSignIn.nativeRequestPending = false;
-      if (!_isCurrent(generation)) {
-        if (identity != null && pendingSignIn.superseded) {
-          await _finishSupersededSignIn(pendingSignIn, identity);
-        }
-        return false;
-      }
+      if (!_isCurrent(generation)) return false;
       final failure = _failure(error, AuthFailureCode.unknown);
       if (identity == null) {
         _setUnavailable(failure);
@@ -145,11 +138,8 @@ final class AuthService extends ChangeNotifier {
       }
       return false;
     } finally {
-      _pendingSignIns.remove(generation);
       _endCommand(generation);
-      // Logout may have completed before the SDK sign-in. Release the busy
-      // gate only after its late identity has been cleaned up.
-      if (pendingSignIn.superseded) _notify();
+      _notify();
     }
   }
 
@@ -194,11 +184,6 @@ final class AuthService extends ChangeNotifier {
       return false;
     }
 
-    for (final pendingSignIn in _pendingSignIns.values) {
-      if (pendingSignIn.nativeRequestPending) {
-        pendingSignIn.superseded = true;
-      }
-    }
     final previousUid = _user?.uid ?? _currentUid;
     final generation = _beginCommand(SessionStatus.signingOut);
     if (previousUid != null) _suppressedUids.add(previousUid);
@@ -260,7 +245,7 @@ final class AuthService extends ChangeNotifier {
   }
 
   void clearError() {
-    if (_disposed || _error == null) return;
+    if (_disposed || _error == null || requiresSignOut) return;
     _error = null;
     _notify();
   }
@@ -269,6 +254,7 @@ final class AuthService extends ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _authentication.removeListener(_onAuthenticationLifecycleChanged);
     ++_generation;
     _disposedCompleter.complete();
     _completeInitialization();
@@ -283,10 +269,7 @@ final class AuthService extends ChangeNotifier {
       _status == SessionStatus.signingOut ||
       _observerSuppressedBy != null ||
       _nativeSignOutInProgress ||
-      _hasSupersededSignInPending;
-
-  bool get _hasSupersededSignInPending =>
-      _pendingSignIns.values.any((pendingSignIn) => pendingSignIn.superseded);
+      _authentication.busy;
 
   String? get _currentUid {
     try {
@@ -321,6 +304,12 @@ final class AuthService extends ChangeNotifier {
     final isInitial = !_hasObservedInitialState;
     _hasObservedInitialState = true;
 
+    if (requiresSignOut) {
+      _setUnavailable(const AuthFailure(AuthFailureCode.signOutFailed));
+      _completeInitialization();
+      return;
+    }
+
     if (observedUser == null && _suppressNextSignOutNullEvent) {
       _suppressNextSignOutNullEvent = false;
       if (isInitial) _completeInitialization();
@@ -329,11 +318,11 @@ final class AuthService extends ChangeNotifier {
     if (observedUser != null &&
         !_suppressedUids.contains(observedUser.uid) &&
         _observerSuppressedBy == null &&
-        !_hasSupersededSignInPending) {
+        !_authentication.busy) {
       _suppressNextSignOutNullEvent = false;
     }
 
-    if (_observerSuppressedBy != null || _hasSupersededSignInPending) {
+    if (_observerSuppressedBy != null || _authentication.busy) {
       return;
     }
 
@@ -425,10 +414,13 @@ final class AuthService extends ChangeNotifier {
     if (_currentUid != refreshed.uid) {
       throw const AuthFailure(AuthFailureCode.invalidResponse);
     }
-    if (!account.isActive || !account.matchesEmail(refreshed.email)) {
+    if (!account.matchesEmail(refreshed.email)) {
       throw const AuthFailure(AuthFailureCode.accountUnavailable);
     }
 
+    // The backend evaluates verification and time-based blocks. A historical
+    // TemporarilyBlocked status can be returned after expiry; both protected
+    // endpoints must succeed, rather than duplicating server policy locally.
     final ranches = await _accounts.ranchAccess();
     if (!_isCurrent(generation)) return null;
     if (_currentUid != refreshed.uid) {
@@ -472,40 +464,18 @@ final class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> _finishSupersededSignIn(
-    _PendingSignIn pendingSignIn,
-    AuthUser identity,
-  ) async {
-    if (_disposed || !pendingSignIn.superseded) return;
-
-    // Firebase has one mutable native identity. New explicit sign-ins remain
-    // blocked until this superseded request and its cleanup have completed.
-    _suppressedUids.add(identity.uid);
-    final generation = _generation;
-    if (!_isCurrent(generation) ||
-        !_authentication.isConfigured ||
-        _currentUid != identity.uid) {
-      return;
-    }
-
-    final ownsObserverSuppression = _observerSuppressedBy == null;
-    if (ownsObserverSuppression) _observerSuppressedBy = generation;
-    _nativeSignOutInProgress = true;
-    _suppressNextSignOutNullEvent = true;
-    try {
-      if (!_isCurrent(generation) || _currentUid != identity.uid) {
-        return;
-      }
-      await _authentication.signOut();
-    } catch (_) {
-      if (_isCurrent(generation)) {
-        _setUnavailable(const AuthFailure(AuthFailureCode.signOutFailed));
-      }
-    } finally {
-      _nativeSignOutInProgress = false;
-      if (ownsObserverSuppression && _observerSuppressedBy == generation) {
-        _observerSuppressedBy = null;
-      }
+  void _onAuthenticationLifecycleChanged() {
+    if (_disposed) return;
+    final failure = _authentication.cleanupFailure;
+    if (failure != null && !_authentication.busy) {
+      _setUnavailable(failure);
+      _completeInitialization();
+    } else if (!_authentication.busy &&
+        _observerSuppressedBy == null &&
+        _hasObservedInitialState) {
+      _onAuthStateChanged(_authentication.currentUser);
+    } else {
+      _notify();
     }
   }
 
@@ -616,9 +586,4 @@ final class _SessionSnapshot {
   final AuthUser user;
   final IamAccount account;
   final List<RanchAccess> ranches;
-}
-
-final class _PendingSignIn {
-  bool superseded = false;
-  bool nativeRequestPending = true;
 }

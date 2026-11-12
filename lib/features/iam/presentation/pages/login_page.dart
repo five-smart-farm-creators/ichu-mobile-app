@@ -117,7 +117,7 @@ final class _LoginPageState extends State<LoginPage>
       final theme = Theme.of(context);
       final auth = widget.authentication;
       final busy = auth.busy || _submitting;
-      final available = auth.canSignIn && !busy;
+      final available = auth.canSignIn && !busy && !auth.requiresSignOut;
       final progressMessage = switch (auth.status) {
         SessionStatus.signingIn => strings.iamSigningIn,
         SessionStatus.signingOut => strings.iamSigningOut,

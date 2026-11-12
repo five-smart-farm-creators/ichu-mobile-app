@@ -50,6 +50,7 @@ Add or update tests for changed behavior. Report any checks that could not be ru
 - Keep bootstrap, deployment settings, app-wide layout, and theme in `lib/core/` and the app entrypoints. Keep `lib/shared/` business-neutral; do not move IAM rules there for convenience.
 - Use constructor injection and the existing Flutter notification approach. Introduce routing/state packages only for demonstrated requirements, not to recreate Angular or ASP.NET structure mechanically.
 - Reuse the explicit palette in `IchuColors` and `IchuTheme`. Preserve the web brand while adapting layout, navigation, touch targets, and scrolling to mobile. Do not add a dark theme without an approved design.
+- Treat the backend's implemented contracts, domain rules, and tests as the functional source of truth. The web client is unfinished and is a visual reference, not authority for available capabilities or business policy. Do not copy client-side restrictions that contradict the backend.
 - Identify test fixtures as fixtures. Do not show fake sessions or records as a real integration, and do not claim live REST verification unless the backend was reachable and the calls were actually made.
 
 ### Localization and accessibility

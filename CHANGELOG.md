@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented native Firebase setup, session/transport guarantees, verified Android checks, and the remaining live-service and iOS validation blockers.
 
 ### Changed
+- Made backend contracts and tests authoritative for mobile behavior; the unfinished Web App remains a visual reference only.
+- Kept native cleanup intent and failed-sign-out retry requirements in a shared authentication lifecycle so session-service disposal cannot reopen a discarded identity.
+- Aligned account access with backend authorization and time-based block expiry instead of copying the unfinished web client's status-label restriction; the account view reports server-validated access without relabeling stored status.
 - Raised the minimum iOS deployment target to 15.0 to meet the Firebase plugins' requirements; Android network access is declared and local cleartext API traffic is debug-only.
 - Replaced the starter counter and temporary unauthenticated preview with web-aligned IAM pages, stable guarded routing, and session revalidation when the app resumes.
 

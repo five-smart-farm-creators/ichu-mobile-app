@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/auth_service.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/authentication_lifecycle.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_failure.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_user.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
@@ -22,7 +23,12 @@ void main() {
       final accounts = FakeAccountRepository(
         ranches: const <RanchAccess>[ranch],
       );
-      final service = _createService(authentication, accounts);
+      final lifecycle = AuthenticationLifecycle(authentication);
+      final service = _createService(
+        authentication,
+        accounts,
+        lifecycle: lifecycle,
+      );
       _disposeAfterTest(service, authentication);
 
       final initialization = service.initialize();
@@ -76,19 +82,13 @@ void main() {
     },
   );
 
-  test('inactive or mismatched accounts cannot be granted a session', () async {
+  test('mismatched account emails cannot be granted a session', () async {
     const rejectedAccounts = <IamAccount>[
       IamAccount(
         id: 'accountUUID',
         email: 'someone-else@example.test',
         role: AccountRole.ranchManager,
         status: 'active',
-      ),
-      IamAccount(
-        id: 'accountUUID',
-        email: 'user@example.test',
-        role: AccountRole.ranchManager,
-        status: 'pending',
       ),
     ];
 
@@ -106,6 +106,72 @@ void main() {
       expect(authentication.signOutCalls, 1);
     }
   });
+
+  test(
+    'backend-authorized access accepts an expired historical block status',
+    () async {
+      final authentication = FakeAuthenticationRepository();
+      final accounts = FakeAccountRepository(
+        account: const IamAccount(
+          id: 'accountUUID',
+          email: 'user@example.test',
+          role: AccountRole.ranchManager,
+          status: 'TemporarilyBlocked',
+        ),
+      );
+      final service = _createService(authentication, accounts);
+      _disposeAfterTest(service, authentication);
+      await service.initialize();
+      expect(service.status, SessionStatus.authenticated);
+      expect(service.account?.status, 'TemporarilyBlocked');
+      expect(accounts.calls, ['currentAccount', 'ranchAccess']);
+      expect(authentication.signOutCalls, 0);
+    },
+  );
+
+  test(
+    'an active backend block rejection cannot be overridden by local status',
+    () async {
+      final authentication = FakeAuthenticationRepository();
+      final accounts = FakeAccountRepository()
+        ..currentAccountFailure = const AuthFailure(
+          AuthFailureCode.accountUnavailable,
+        );
+      final service = _createService(authentication, accounts);
+      _disposeAfterTest(service, authentication);
+      await service.initialize();
+      expect(service.status, SessionStatus.unavailable);
+      expect(service.account, isNull);
+      expect(accounts.ranchAccessCalls, 0);
+      expect(authentication.signOutCalls, 1);
+    },
+  );
+
+  test(
+    'historical block status grants no access if the ranch endpoint rejects it',
+    () async {
+      final authentication = FakeAuthenticationRepository();
+      final accounts =
+          FakeAccountRepository(
+              account: const IamAccount(
+                id: 'accountUUID',
+                email: 'user@example.test',
+                role: AccountRole.ranchManager,
+                status: 'TemporarilyBlocked',
+              ),
+            )
+            ..ranchAccessFailure = const AuthFailure(
+              AuthFailureCode.accountUnavailable,
+            );
+      final service = _createService(authentication, accounts);
+      _disposeAfterTest(service, authentication);
+      await service.initialize();
+      expect(service.status, SessionStatus.unavailable);
+      expect(service.account, isNull);
+      expect(service.ranches, isEmpty);
+      expect(authentication.signOutCalls, 1);
+    },
+  );
 
   test(
     'unavailable repositories are not called and recovery needs identity only',
@@ -323,7 +389,12 @@ void main() {
         final staleSignIn = Completer<AuthUser>();
         authentication.deferredSignInResponses.add(staleSignIn);
         final accounts = FakeAccountRepository();
-        final service = _createService(authentication, accounts);
+        final lifecycle = AuthenticationLifecycle(authentication);
+        final service = _createService(
+          authentication,
+          accounts,
+          lifecycle: lifecycle,
+        );
         _disposeAfterTest(service, authentication);
         await service.initialize();
         final busyChanges = <bool>[];
@@ -353,7 +424,11 @@ void main() {
 
         // A fresh service has no suppressed-UID memory: native persistence must
         // itself be clear, rather than relying only on an in-memory rejection.
-        final restarted = _createService(authentication, accounts);
+        final restarted = _createService(
+          authentication,
+          accounts,
+          lifecycle: lifecycle,
+        );
         addTearDown(restarted.dispose);
         await restarted.initialize();
         expect(restarted.status, SessionStatus.signedOut);
@@ -392,6 +467,126 @@ void main() {
     expect(service.busy, isFalse);
     expect(authentication.currentUser, isNull);
   });
+
+  test(
+    'logout cleanup survives service disposal and blocks its replacement',
+    () async {
+      final authentication = FakeAuthenticationRepository(user: null);
+      final staleSignIn = Completer<AuthUser>();
+      authentication.deferredSignInResponses.add(staleSignIn);
+      final lifecycle = AuthenticationLifecycle(authentication);
+      final accounts = FakeAccountRepository();
+      final service = _createService(
+        authentication,
+        accounts,
+        lifecycle: lifecycle,
+      );
+      _disposeAfterTest(service, authentication);
+      await service.initialize();
+      final request = service.signIn('user@example.test', 'password');
+      expect(await service.signOut(), isTrue);
+      service.dispose();
+
+      final replacement = _createService(
+        authentication,
+        accounts,
+        lifecycle: lifecycle,
+      );
+      addTearDown(replacement.dispose);
+      final restored = replacement.initialize();
+      expect(replacement.busy, isTrue);
+      expect(
+        await replacement.signIn('user@example.test', 'new-password'),
+        isFalse,
+      );
+      staleSignIn.complete(syntheticAuthUser);
+      expect(await request, isFalse);
+      await restored;
+      expect(authentication.currentUser, isNull);
+      expect(authentication.signOutCalls, 2);
+      expect(accounts.currentAccountCalls, 0);
+      expect(replacement.status, SessionStatus.signedOut);
+      expect(replacement.busy, isFalse);
+      expect(
+        await replacement.signIn('user@example.test', 'new-password'),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'failed cleanup remains latched across disposal and failed login attempts',
+    () async {
+      final authentication = FakeAuthenticationRepository(user: null);
+      final staleSignIn = Completer<AuthUser>();
+      authentication.deferredSignInResponses.add(staleSignIn);
+      final lifecycle = AuthenticationLifecycle(authentication);
+      final accounts = FakeAccountRepository();
+      final service = _createService(
+        authentication,
+        accounts,
+        lifecycle: lifecycle,
+      );
+      _disposeAfterTest(service, authentication);
+      await service.initialize();
+      final request = service.signIn('user@example.test', 'password');
+      expect(await service.signOut(), isTrue);
+      service.dispose();
+      authentication.signOutFailure = StateError('private SDK detail');
+      staleSignIn.complete(syntheticAuthUser);
+      expect(await request, isFalse);
+      expect(lifecycle.cleanupFailure?.code, AuthFailureCode.signOutFailed);
+
+      final replacement = _createService(
+        authentication,
+        accounts,
+        lifecycle: lifecycle,
+      );
+      addTearDown(replacement.dispose);
+      await replacement.initialize();
+      expect(replacement.requiresSignOut, isTrue);
+      replacement.clearError();
+      expect(replacement.error?.code, AuthFailureCode.signOutFailed);
+      authentication.signInFailure = const AuthFailure(
+        AuthFailureCode.invalidCredentials,
+      );
+      expect(
+        await replacement.signIn('user@example.test', 'invalid-password'),
+        isFalse,
+      );
+      expect(authentication.signInCalls, 1);
+      expect(replacement.error?.code, AuthFailureCode.signOutFailed);
+      expect(replacement.account, isNull);
+      expect(accounts.currentAccountCalls, 0);
+      authentication.signOutFailure = null;
+      expect(await replacement.signOut(), isTrue);
+      expect(replacement.requiresSignOut, isFalse);
+      expect(authentication.currentUser, isNull);
+      authentication.signInFailure = null;
+      expect(
+        await replacement.signIn('user@example.test', 'new-password'),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'native cleanup continues even after lifecycle notifications are disposed',
+    () async {
+      final authentication = FakeAuthenticationRepository(user: null);
+      final staleSignIn = Completer<AuthUser>();
+      authentication.deferredSignInResponses.add(staleSignIn);
+      final lifecycle = AuthenticationLifecycle(authentication);
+      addTearDown(authentication.close);
+      final request = lifecycle.signIn('user@example.test', 'password');
+      await lifecycle.signOut();
+      lifecycle.dispose();
+      staleSignIn.complete(syntheticAuthUser);
+      await expectLater(request, throwsA(isA<AuthFailure>()));
+      expect(authentication.currentUser, isNull);
+      expect(authentication.signOutCalls, 2);
+    },
+  );
 
   test(
     'failed late cleanup offers sign-out retry without granting access',
@@ -673,8 +868,12 @@ void main() {
 
 AuthService _createService(
   FakeAuthenticationRepository authentication,
-  FakeAccountRepository accounts,
-) => AuthService(authentication: authentication, accounts: accounts);
+  FakeAccountRepository accounts, {
+  AuthenticationLifecycle? lifecycle,
+}) => AuthService(
+  authentication: lifecycle ?? AuthenticationLifecycle(authentication),
+  accounts: accounts,
+);
 
 void _disposeAfterTest(
   AuthService service,

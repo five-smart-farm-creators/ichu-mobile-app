@@ -400,7 +400,7 @@ void main() {
         expect(account.email, 'manager@example.test');
         expect(account.role, AccountRole.ranchManager);
         expect(account.status, 'Active');
-        expect(account.isActive, isTrue);
+        expect(account.status, 'Active');
       },
     );
 

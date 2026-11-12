@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app.dart';
 import 'core/config/app_config.dart';
 import 'features/iam/application/services/auth_service.dart';
+import 'features/iam/application/services/authentication_lifecycle.dart';
 import 'features/iam/infrastructure/configuration/firebase_client_config.dart';
 import 'features/iam/infrastructure/http/authenticated_api_client.dart';
 import 'features/iam/infrastructure/repositories/firebase_auth_repository.dart';
@@ -27,8 +28,10 @@ Future<void> main() async {
     TargetPlatform.iOS when !kIsWeb => FirebaseNativePlatform.ios,
     _ => FirebaseNativePlatform.unsupported,
   };
-  final identity = await FirebaseAuthRepository.initialize(
-    FirebaseClientConfig.fromEnvironment(platform),
+  final identity = AuthenticationLifecycle(
+    await FirebaseAuthRepository.initialize(
+      FirebaseClientConfig.fromEnvironment(platform),
+    ),
   );
   final client = http.Client();
   final authentication = AuthService(
@@ -51,6 +54,7 @@ Future<void> main() async {
       authentication: authentication,
       onDispose: () {
         authentication.dispose();
+        identity.dispose();
         client.close();
         language.dispose();
       },

@@ -75,10 +75,10 @@ final class SessionAccountPage extends StatelessWidget {
                     Text(role),
                     const SizedBox(height: 16),
                     Text(
-                      strings.iamAccountStatus,
+                      strings.iamAccountAccess,
                       style: theme.textTheme.labelLarge,
                     ),
-                    Text(strings.iamAccountActive),
+                    Text(strings.iamAccountAuthorized),
                     const SizedBox(height: 16),
                     Text(strings.iamRanchCount(authentication.ranches.length)),
                     if (authentication.ranches.isEmpty)

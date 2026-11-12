@@ -2,6 +2,8 @@
 
 Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements existing-account IAM authentication on the shared mobile foundation.
 
+The completed backend is the functional source of truth for API contracts and business rules. The unfinished Web App supplies visual brand references only; mobile delivery proceeds by bounded context and verified backend use cases, not by copying unfinished browser workflows.
+
 ## Current scope
 
 - Sign-in and password recovery through the native Firebase Authentication SDK, with the web app's palette, Outfit headings, Plus Jakarta Sans body text, and Andean herd imagery.
@@ -66,17 +68,18 @@ Firebase app IDs use the native `1:<sender-id>:android:<app-hash>` or `1:<sender
 
 ### Session and transport behavior
 
-- Passwords are sent only to Firebase Authentication, never `POST /accounts/sessions` or the ICHU API. Direct Firebase sign-in follows the Web App, but does not invoke that backend endpoint's attempt auditing or local password lockout flow.
+- Passwords are sent only to Firebase Authentication, never `POST /accounts/sessions` or the ICHU API. The backend accepts the native Firebase ID token for protected resources. This supported bearer flow does **not** execute `/accounts/sessions`' attempt auditing, failed-attempt counter, or successful-attempt reset; it is not claimed equivalent to that separate backend sign-in use case. Adopting backend-audited credential sign-in would require an explicit session/token design, not a second duplicate password call.
 - The app reloads the Firebase user and refreshes verification claims, requires a verified email, then calls `GET /api/v1/accounts/me` **before** `GET /api/v1/accounts/me/ranches`. This avoids concurrent first-use activation of pending backend accounts.
-- A session requires the same current UID, a matching normalized account email, an `Active` ICHU account, and both successful API responses. Zero authorized ranches is a valid signed-in state. Revoked/failed validation clears the account snapshot.
+- A session requires the same current UID, a verified email matching the normalized account email, and successful authenticated responses from both account/access endpoints. The backend decides whether verification and time-based blocks permit access; zero authorized ranches is a valid signed-in state. Revoked/failed validation clears the account snapshot.
 - Generation checks discard late responses after user changes/sign-out. Account routes redirect to login unless the application session is fully validated; sign-out removes protected navigation access immediately.
-- If logout supersedes a pending native sign-in, the form remains busy until that request settles and its late identity is signed out. A new native sign-in cannot overlap the discarded request or its cleanup. If native sign-out fails, local access remains closed and the UI offers a sign-out retry; native persistence cannot be claimed cleared until that retry succeeds.
+- An injected `AuthenticationLifecycle` is shared by the session service and HTTP client. It retains pending native cleanup when a session service is disposed; replacement services must reuse that same lifecycle. If logout supersedes a pending native sign-in, the form remains busy until that request settles and its late identity is signed out. A new native sign-in cannot overlap the discarded request or its cleanup.
+- If native sign-out fails, the lifecycle hides that identity, keeps new sign-in blocked, and preserves the sign-out retry requirement across replacement services. Local access remains closed, but native persistence cannot be claimed cleared until a retry succeeds. Cleanup continues even if lifecycle UI notifications have been disposed; process termination cannot guarantee completion of an in-flight native operation.
 - Tokens are obtained from the SDK for each API request and never manually cached in preferences. The SDK handles expired-token refresh. A 401 is not automatically replayed: a blocked/missing account must not be mistaken for token expiry.
 - The authenticated client accepts only relative API resource paths under the configured origin and `/api/v1` root. Redirect following is disabled to prevent bearer forwarding to another destination. Requests have a timeout and bounded response handling; server errors become safe, localized categories rather than raw response titles/exceptions.
 - Password reset has a generic outcome that does not reveal whether an address exists. Password controllers clear after an attempt, backgrounding, or leaving the form; visibility resets to hidden. Controllers are disposed with the page. Firebase manages native session persistence; application preferences contain only the language.
 - Resuming a signed-in app or manually checking the session revalidates access. A service outage never unlocks cached account data. As in the web flow, failed validation may require signing in again.
 
-Only literal active accounts are accepted, matching the Web App. If the backend returns an expired temporary lock as `TemporarilyBlocked` despite a 200 response, this client deliberately remains unauthorized; resolving that backend status inconsistency is outside the mobile branch.
+The backend's `UserAccount.IsActive(now)` evaluates the block expiry independently of its persisted status label. After expiry, both protected endpoints can return success while `AccountResource.status` still reads `TemporarilyBlocked`. Mobile respects those successful server decisions rather than applying the unfinished web client's literal-`Active` gate or inventing a local clock-based unlock. The account view reports server-validated access, not a fabricated `Active` status. An active block's 401, or rejection by either endpoint, always keeps the app unauthorized.
 
 ## Architecture
 
@@ -133,9 +136,9 @@ The existing Git Flow workflow checks conventions on PRs, not Flutter builds. Bu
 
 Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-11:
 
-- Formatting and static analysis pass; the full suite has **130 passing tests**. A separate run of the 25 API configuration tests also passes with production defines.
+- Formatting and static analysis pass; the full suite has **138 passing tests**. A separate run of the 25 API configuration tests also passes with production defines.
 - The Android debug APK builds and runs on an Android API 37 emulator. Native checks cover the unavailable-configuration state, public recovery, terms/back navigation, EN/ES switching, and language persistence after force-stop/relaunch.
-- Session/SDK/HTTP tests use synthetic fixtures, including late sign-in cleanup and fresh-service restoration. They do not demonstrate real Firebase sign-in, password-reset delivery, or authenticated REST responses.
+- Session/SDK/HTTP tests use synthetic fixtures, including cleanup across service disposal/replacement, latched sign-out retries, and backend-authorized historical block status. They do not demonstrate real Firebase sign-in, password-reset delivery, or authenticated REST responses.
 - Live integration remains blocked: the Render `/health` endpoint returns **503** with a `Service Suspended` page, and approved native Firebase options/registrations have not been supplied. No project registrations or native identifiers were changed.
 - iOS build/run remains unverified because this host does not provide macOS/Xcode. This debug build is not a signed store release.
 

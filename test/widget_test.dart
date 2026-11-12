@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ichu_mobile_app/app.dart';
 import 'package:ichu_mobile_app/core/theme/ichu_colors.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/auth_service.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/authentication_lifecycle.dart';
+import 'package:ichu_mobile_app/features/iam/domain/model/auth_failure.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_user.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/login_page.dart';
@@ -41,6 +43,7 @@ pumpApp(
   AppLanguage initialLanguage = AppLanguage.english,
   String initialRoute = '/',
   IamAccount account = _account,
+  AuthFailure? accountFailure,
   MemoryLanguagePreferences? preferences,
 }) async {
   final language = LanguageService(
@@ -53,10 +56,13 @@ pumpApp(
     ..signInUser = _user;
   final accounts = FakeAccountRepository()
     ..isConfigured = configured
+    ..currentAccountFailure = accountFailure
     ..account = account;
-  final auth = AuthService(authentication: identity, accounts: accounts);
+  final lifecycle = AuthenticationLifecycle(identity);
+  final auth = AuthService(authentication: lifecycle, accounts: accounts);
   addTearDown(() async {
     auth.dispose();
+    lifecycle.dispose();
     await identity.close();
     language.dispose();
   });
@@ -246,12 +252,7 @@ void main() {
   ) async {
     final fixture = await pumpApp(
       tester,
-      account: const IamAccount(
-        id: '11111111-1111-4111-8111-111111111111',
-        email: 'user@example.test',
-        role: AccountRole.ranchManager,
-        status: 'TemporarilyBlocked',
-      ),
+      accountFailure: const AuthFailure(AuthFailureCode.accountUnavailable),
     );
     await fillSignIn(tester);
     await tester.tap(find.byTooltip('Show password'));
@@ -307,6 +308,25 @@ void main() {
     },
   );
 
+  testWidgets(
+    'server-authorized historical block status is not relabeled active',
+    (tester) async {
+      await pumpApp(
+        tester,
+        restored: true,
+        account: const IamAccount(
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'user@example.test',
+          role: AccountRole.ranchManager,
+          status: 'TemporarilyBlocked',
+        ),
+      );
+      expect(find.byType(SessionAccountPage), findsOneWidget);
+      expect(find.text('Validated by ICHU'), findsOneWidget);
+      expect(find.text('Active'), findsNothing);
+    },
+  );
+
   testWidgets('restored identity opens only a server-validated account', (
     tester,
   ) async {
@@ -315,6 +335,43 @@ void main() {
     expect(find.text('Verified account'), findsOneWidget);
     expect(find.byType(LoginPage), findsNothing);
   });
+
+  testWidgets(
+    'failed native sign-out keeps login disabled until retry succeeds',
+    (tester) async {
+      final fixture = await pumpApp(tester, restored: true);
+      fixture.identity.signOutFailure = StateError('private SDK detail');
+      expect(await fixture.auth.signOut(), isFalse);
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(fixture.auth.requiresSignOut, isTrue);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('login-submit')))
+            .onPressed,
+        isNull,
+      );
+      await tester.ensureVisible(find.byKey(const Key('login-email')));
+      await tester.enterText(
+        find.byKey(const Key('login-email')),
+        'user@example.test',
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('sign-out could not finish'), findsOneWidget);
+      fixture.identity.signOutFailure = null;
+      await tester.ensureVisible(find.text('Sign out'));
+      await tester.tap(find.text('Sign out'));
+      await tester.pumpAndSettle();
+      expect(fixture.auth.requiresSignOut, isFalse);
+      expect(fixture.identity.currentUser, isNull);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('login-submit')))
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
 
   testWidgets(
     'opening recovery clears credentials in the covered login route',
