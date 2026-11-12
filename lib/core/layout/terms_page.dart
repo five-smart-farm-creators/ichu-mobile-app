@@ -4,11 +4,12 @@ import '../../shared/application/services/language_service.dart';
 import '../../shared/infrastructure/i18n/generated/app_localizations.dart';
 import 'public_shell.dart';
 
-/// Describes platform services separately from this preview's capabilities.
+/// Describes platform services separately from the current mobile capabilities.
 final class TermsPage extends StatelessWidget {
-  const TermsPage({super.key, required this.language});
+  const TermsPage({super.key, required this.language, required this.onBack});
 
   final LanguageService language;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +26,7 @@ final class TermsPage extends StatelessWidget {
     return PublicShell(
       language: language,
       showBackButton: true,
+      onBack: onBack,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -36,7 +38,7 @@ final class TermsPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Text(strings.termsPreview),
+          Text(strings.termsScope),
           const SizedBox(height: 24),
           for (final (title, body) in sections) ...[
             Card(
@@ -58,7 +60,7 @@ final class TermsPage extends StatelessWidget {
             const SizedBox(height: 16),
           ],
           TextButton.icon(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: onBack,
             icon: const Icon(Icons.arrow_back),
             label: Text(strings.termsBack),
           ),

@@ -4,7 +4,7 @@ enum AppEnvironment { development, staging, production }
 /// A safe, non-sensitive reason that API configuration is unavailable.
 enum AppConfigIssue { missingApiUrl, invalidApiUrl, invalidEnvironment }
 
-/// Immutable compile-time configuration for the future API client.
+/// Immutable compile-time configuration for the authenticated API client.
 class AppConfig {
   const AppConfig._({
     required this.environment,

@@ -44,12 +44,13 @@ Add or update tests for changed behavior. Report any checks that could not be ru
 
 ### DDD boundaries and Flutter composition
 
-- Organize authorized business capabilities under `lib/features/<context>/`, using Dart `lowercase_with_underscores` names. Only IAM has a public preview so far; do not create the other product contexts or unused folders speculatively.
+- Organize authorized business capabilities under `lib/features/<context>/`, using Dart `lowercase_with_underscores` names. IAM is the current implemented context; do not create the other product contexts or unused folders speculatively.
 - Add `domain/model/` and `domain/repositories/` when models and ports are required. Keep domain code plain Dart: no Flutter, Firebase, platform storage, HTTP clients, or transport serialization.
 - Put use-case coordination in `application/`, adapters in `infrastructure/`, and pages/widgets in `presentation/`. Widgets call application services rather than platform adapters. Future cross-context collaboration must use explicit application facades, not another context's internals.
 - Keep bootstrap, deployment settings, app-wide layout, and theme in `lib/core/` and the app entrypoints. Keep `lib/shared/` business-neutral; do not move IAM rules there for convenience.
 - Use constructor injection and the existing Flutter notification approach. Introduce routing/state packages only for demonstrated requirements, not to recreate Angular or ASP.NET structure mechanically.
 - Reuse the explicit palette in `IchuColors` and `IchuTheme`. Preserve the web brand while adapting layout, navigation, touch targets, and scrolling to mobile. Do not add a dark theme without an approved design.
+- Treat the backend's implemented contracts, domain rules, and tests as the functional source of truth. The web client is unfinished and is a visual reference, not authority for available capabilities or business policy. Do not copy client-side restrictions that contradict the backend.
 - Identify test fixtures as fixtures. Do not show fake sessions or records as a real integration, and do not claim live REST verification unless the backend was reachable and the calls were actually made.
 
 ### Localization and accessibility
