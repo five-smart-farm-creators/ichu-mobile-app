@@ -1,15 +1,16 @@
 # ICHU Mobile App
 
-Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. The current build provides the mobile foundation, not a complete IAM client.
+Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements existing-account IAM authentication on the shared mobile foundation.
 
 ## Current scope
 
-- A public, explicitly labeled preview using the web app's green/gold palette, Outfit headings, Plus Jakarta Sans body text, and Andean herd imagery.
-- Scrollable welcome and terms pages with safe areas, accessible controls, and large-text support.
+- Sign-in and password recovery through the native Firebase Authentication SDK, with the web app's palette, Outfit headings, Plus Jakarta Sans body text, and Andean herd imagery.
+- Session restoration and a guarded account summary that opens only after verified identity and sequential IAM account/access validation.
+- Scrollable sign-in, recovery, account, and terms pages with safe areas, accessible controls, and large-text/keyboard support.
 - English by default, Latin American Spanish, and a device language preference. Changing the language updates the current page without resetting navigation.
-- Validated, non-secret API configuration for subsequent integration. A valid URL is not a health check and does not enable sign-in.
+- Validated, non-secret API and native Firebase settings. Missing settings leave sign-in unavailable without initializing a fabricated Firebase project or loading sample accounts.
 
-**Authentication, account registration, professional profiles, ranch selection, and advisories are not implemented in this branch.** There are no simulated sessions, ranch records, or API calls. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this foundation's scope.
+**Account registration, profile editing, ranch selection, and advisory management remain separate work.** There are no simulated production sessions or ranch records. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this branch's scope.
 
 ## Run locally
 
@@ -29,7 +30,7 @@ The language preference is loaded before the first page. Unsupported values or i
 flutter run --dart-define=APP_ENV=development --dart-define=ICHU_API_BASE_URL=http://10.0.2.2:5099/api/v1
 ```
 
-This prepares configuration only; this build does not contact the endpoint. `10.0.2.2` refers to the host machine from the standard Android emulator, not from a physical phone.
+`10.0.2.2` refers to the host machine from the standard Android emulator, not from a physical phone. API configuration alone does not enable sign-in: approved native Firebase options are also required.
 
 | Define | Values and behavior |
 | --- | --- |
@@ -38,20 +39,61 @@ This prepares configuration only; this build does not contact the endpoint. `10.
 
 Development HTTP is restricted to `localhost`, `127.0.0.1`, `[::1]`, and `10.0.2.2`. Staging and production require HTTPS. Credentials, queries, fragments, arbitrary paths, and duplicate version segments are rejected. Missing or invalid settings show a safe localized notice, without printing the supplied value. An invalid environment's internal enum fallback does **not** make the configuration usable.
 
-Compile-time defines and `--dart-define-from-file` values are recoverable from an app binary; **they are not secret storage**. Never include passwords, private Firebase credentials, signing keys, or service-account files. Firebase mobile application registration and native identifiers must be agreed before the authentication branch. Do not copy browser configuration files into this repository.
+Compile-time defines and `--dart-define-from-file` values are recoverable from an app binary; **they are not secret storage**. Never include passwords, private Firebase credentials, signing keys, or service-account files. Do not copy browser configuration files into this repository.
+
+### Native Firebase configuration
+
+Copy `config.example.json` to the ignored `config.local.json` and populate only approved public Firebase client settings. Never commit the local file or print its values in diagnostics.
+
+```sh
+flutter run --dart-define-from-file=config.local.json
+```
+
+| Define | Purpose |
+| --- | --- |
+| `ICHU_FIREBASE_API_KEY` | Public Firebase client API key, with project restrictions configured by the owner. |
+| `ICHU_FIREBASE_PROJECT_ID` | Same Firebase project trusted by the ICHU API. |
+| `ICHU_FIREBASE_MESSAGING_SENDER_ID` | Firebase project sender/project number. This does not enable notifications. |
+| `ICHU_FIREBASE_ANDROID_APP_ID` | Approved Firebase Android app ID, associated with the actual Android application ID. |
+| `ICHU_FIREBASE_IOS_APP_ID` | Approved Firebase iOS app ID. |
+| `ICHU_FIREBASE_IOS_BUNDLE_ID` | Approved iOS bundle identifier matching the installed target and Firebase registration. |
+
+Options are passed programmatically to a named Firebase app; no generated service-account credentials, `google-services.json`, or `GoogleService-Info.plist` are needed by this implementation. Unsupported platforms and incomplete/malformed native settings never initialize a Firebase client. Existing Firebase apps must match the requested project/options before reuse.
+
+Firebase app IDs use the native `1:<sender-id>:android:<app-hash>` or `1:<sender-id>:ios:<app-hash>` format. They are not Android package names or iOS bundle identifiers; use the actual values issued by the Firebase project owner.
+
+**External setup is still required.** This branch does not create Firebase registrations, enable email/password providers, change package/bundle identifiers, configure project restrictions, or supply test accounts. Android/iOS identifiers are inherited template values until the owner approves replacements. Register the actual native IDs in the correct project before validating live authentication. A successful APK build or fixture test is not evidence of live Firebase/API integration.
+
+### Session and transport behavior
+
+- Passwords are sent only to Firebase Authentication, never `POST /accounts/sessions` or the ICHU API. Direct Firebase sign-in follows the Web App, but does not invoke that backend endpoint's attempt auditing or local password lockout flow.
+- The app reloads the Firebase user and refreshes verification claims, requires a verified email, then calls `GET /api/v1/accounts/me` **before** `GET /api/v1/accounts/me/ranches`. This avoids concurrent first-use activation of pending backend accounts.
+- A session requires the same current UID, a matching normalized account email, an `Active` ICHU account, and both successful API responses. Zero authorized ranches is a valid signed-in state. Revoked/failed validation clears the account snapshot.
+- Generation checks discard late responses after user changes/sign-out. Account routes redirect to login unless the application session is fully validated; sign-out removes protected navigation access immediately.
+- If logout supersedes a pending native sign-in, the form remains busy until that request settles and its late identity is signed out. A new native sign-in cannot overlap the discarded request or its cleanup. If native sign-out fails, local access remains closed and the UI offers a sign-out retry; native persistence cannot be claimed cleared until that retry succeeds.
+- Tokens are obtained from the SDK for each API request and never manually cached in preferences. The SDK handles expired-token refresh. A 401 is not automatically replayed: a blocked/missing account must not be mistaken for token expiry.
+- The authenticated client accepts only relative API resource paths under the configured origin and `/api/v1` root. Redirect following is disabled to prevent bearer forwarding to another destination. Requests have a timeout and bounded response handling; server errors become safe, localized categories rather than raw response titles/exceptions.
+- Password reset has a generic outcome that does not reveal whether an address exists. Password controllers clear after an attempt, backgrounding, or leaving the form; visibility resets to hidden. Controllers are disposed with the page. Firebase manages native session persistence; application preferences contain only the language.
+- Resuming a signed-in app or manually checking the session revalidates access. A service outage never unlocks cached account data. As in the web flow, failed validation may require signing in again.
+
+Only literal active accounts are accepted, matching the Web App. If the backend returns an expired temporary lock as `TemporarilyBlocked` despite a 200 response, this client deliberately remains unauthorized; resolving that backend status inconsistency is outside the mobile branch.
 
 ## Architecture
 
 ```text
 lib/
   main.dart                         # Platform bootstrap and dependency composition
-  app.dart                          # Theme, locale, and public navigation
+  app.dart                          # Theme, locale, guarded navigation, lifecycle
   core/
     config/                         # Validated deployment settings
     layout/                         # Public shell and app-wide terms
     theme/                          # Explicit web-aligned design tokens
   features/
-    iam/presentation/pages/          # Public welcome preview only
+    iam/
+      domain/                       # Identity, account, permissions, errors, ports
+      application/services/         # Session/recovery coordination
+      infrastructure/               # Native Firebase and authenticated REST adapters
+      presentation/                 # Login, recovery, guarded account summary
   shared/
     domain/model/                   # Framework-independent language values
     domain/repositories/            # Preference persistence port
@@ -61,11 +103,11 @@ lib/
     presentation/widgets/           # Reused language control
 ```
 
-Dependencies point inward. Domain code is plain Dart, without Flutter, HTTP, Firebase, or JSON transport dependencies. Application services coordinate ports; presentation never accesses platform storage directly. Constructor injection is used instead of a global service locator. `ChangeNotifier` is a UI notification mechanism in the language application service, not a domain dependency.
+Dependencies point inward. Domain code is plain Dart, without Flutter, HTTP, Firebase, or JSON transport dependencies. Application services coordinate ports; presentation never accesses platform storage directly. Constructor injection is used instead of a global service locator. `ChangeNotifier` supplies notifications in the language and session application services, not in domain models.
 
-Flutter's built-in Navigator handles the two public pages; `/terms` can open directly and returns to welcome. There are no protected routes yet. Authentication redirects and account models belong in the later IAM implementation, not speculative empty folders.
+`go_router` owns the stable route graph: `/login`, `/recover`, `/terms`, and protected `/account`; `/` selects login or account. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and the session service drives authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
 
-`shared_preferences` is used only for the required language preference. Flutter's `flutter_localizations`, `intl`, and `gen_l10n` provide localizations. The fonts and images are bundled and never fetched at runtime. See [assets/README.md](assets/README.md) for provenance and font licenses.
+`shared_preferences` is used only for the language preference. Flutter's `flutter_localizations`, `intl`, and `gen_l10n` provide localizations. `firebase_core` / `firebase_auth` provide native identity, `http` provides the bounded REST transport, and `go_router` provides guarded navigation. The fonts and images are bundled and never fetched at runtime. See [assets/README.md](assets/README.md) for provenance and font licenses.
 
 ## Checks
 
@@ -77,11 +119,25 @@ flutter test test/core/config/app_config_test.dart --dart-define=APP_ENV=product
 flutter build apk --debug
 ```
 
-Unit tests cover API URL validation, language fallback/persistence, failure handling, and equal EN/ES catalog keys. Widget tests cover public navigation, locale switching, truthful preview states, sensitive-input suppression, large text on phone/landscape/tablet viewports, and Flutter accessibility guidelines. Fixtures are test-only; passing widget tests does not demonstrate Firebase or live REST integration.
+Unit tests cover configuration, identity/account contracts, session transitions and stale-response races, REST token boundaries and parsing, recovery, language preferences, and equal EN/ES catalog keys. Widget tests cover guarded routes, form/error behavior, password clearing, locale changes, large text, and accessibility. Fixtures are explicitly test-only; passing tests does not demonstrate Firebase or live REST integration.
 
-Native validation also needs a run on Android and an iOS build/run on macOS. Complete the Android SDK command-line tools and license setup if `flutter doctor` reports them missing. This branch does not change native identifiers, release signing, launcher icons, or store distribution. The inherited Android release configuration uses debug signing; do not distribute it as a production release.
+Native validation also needs a run on Android and an iOS build/run on macOS. Complete the Android SDK command-line tools and license setup if `flutter doctor` reports them missing. Android declares Internet access for Firebase/API traffic; local cleartext API access is debug-only, while production/staging endpoints require HTTPS. No global iOS ATS exception is introduced; use an approved HTTPS API on iOS. Native identifiers, release signing, launcher icons, and store distribution are not changed. The inherited Android release configuration uses debug signing; do not distribute it as a production release.
 
-The existing Git Flow workflow checks conventions on PRs, not Flutter builds. Build automation belongs to the later quality-gates work. No backend availability claim is made by this preview.
+The current Firebase plugins require iOS **15.0 or later**, so the Xcode deployment target is raised from the starter's 13.0. Android Firebase plugins require API 24; the application continues to use Flutter's supported minimum SDK (verify it when upgrading Flutter). The iOS configuration change has not been validated with Xcode on this Windows host.
+
+The current Firebase Android plugins emit Flutter's warning about applying the Kotlin Gradle Plugin rather than using built-in Kotlin. The debug APK builds with Flutter 3.44.6, but recheck plugin compatibility before upgrading Flutter. Do not patch downloaded plugin/cache files or suppress the warning as a substitute for an upstream-compatible upgrade.
+
+The existing Git Flow workflow checks conventions on PRs, not Flutter builds. Build automation belongs to the later quality-gates work. Live service availability must be checked separately from local tests.
+
+### Authentication branch verification
+
+Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-11:
+
+- Formatting and static analysis pass; the full suite has **130 passing tests**. A separate run of the 25 API configuration tests also passes with production defines.
+- The Android debug APK builds and runs on an Android API 37 emulator. Native checks cover the unavailable-configuration state, public recovery, terms/back navigation, EN/ES switching, and language persistence after force-stop/relaunch.
+- Session/SDK/HTTP tests use synthetic fixtures, including late sign-in cleanup and fresh-service restoration. They do not demonstrate real Firebase sign-in, password-reset delivery, or authenticated REST responses.
+- Live integration remains blocked: the Render `/health` endpoint returns **503** with a `Service Suspended` page, and approved native Firebase options/registrations have not been supplied. No project registrations or native identifiers were changed.
+- iOS build/run remains unverified because this host does not provide macOS/Xcode. This debug build is not a signed store release.
 
 ## Contributing
 
