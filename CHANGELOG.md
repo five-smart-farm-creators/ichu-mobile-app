@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Own-account professional profile values with backend field bounds and nullable account profile data.
 - Strict authenticated profile reads with full-account response validation, fresh SDK tokens, disabled redirects, and no profile mutation API.
+- Session-bound profile loading with deduplicated reads, explicit recovery after denial, immediate cached-data clearing, and late-response isolation across logout, revalidation, account, and role changes.
 - Backend-aligned registration contracts for veterinarians and ranch managers, including required ranch-creation fields, creation acknowledgements, and stable registration failures.
 - Isolated native Firebase identity creation, existing-registration sign-in, and verification email support using shared safe SDK initialization and error mapping.
 - A constrained authenticated account-creation POST with backend-shaped payloads and response mapping, no credential fields or automatic retries, and identity-bound GET reconciliation.
