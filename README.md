@@ -1,6 +1,6 @@
 # ICHU Mobile App
 
-Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication, account registration, and own-account professional profiles on the shared mobile foundation.
+Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication, registration, read-only professional profiles, and authorized ranch selection on the shared mobile foundation.
 
 The implemented backend is the functional source of truth for API contracts and business rules. The report defines mobile product scope; the unfinished Web App supplies visual brand references only. Mobile delivery selects field-oriented use cases, not every backend module or browser workflow. Proposed report endpoints must be checked against implemented contracts before use.
 
@@ -11,11 +11,12 @@ The implemented backend is the functional source of truth for API contracts and 
 - Account registration for the backend-supported veterinarian and ranch-manager roles; manager registration includes the required creation of a new ranch.
 - Email verification and continuation of an existing registration using an isolated native identity session, without replacing the workspace identity.
 - Authenticated, read-only professional profiles with strict nullable response mapping and an explicit reload. Profile writes are not exposed in the UI, application service, repository port, or HTTP client.
+- Explicit, session-only ranch selection from the server-authorized list, with ranch metadata, effective access scopes, expiration, and no automatic choice or stored access code.
 - Scrollable sign-in, recovery, account, and terms pages with safe areas, accessible controls, and large-text/keyboard support.
 - English by default, Latin American Spanish, and a device language preference. Changing the language updates the current page without resetting navigation.
 - Validated, non-secret API and native Firebase settings. Missing settings leave sign-in unavailable without initializing a fabricated Firebase project or loading sample accounts.
 
-**Existing-ranch selection, ranch administration, and advisory management remain separate work.** Field operators cannot self-register through the backend registration use case. There are no simulated production sessions or ranch records. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this branch's scope.
+**Ranch administration and advisory management remain separate work.** Choosing an authorized ranch does not join a ranch, grant access, or create records. Field operators cannot self-register through the backend registration use case; existing field-operator accounts may select only server-returned ranches without a role-based scope upgrade. There are no simulated production sessions or ranch records. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this branch's scope.
 
 ### Field-focused mobile delivery
 
@@ -121,6 +122,17 @@ The backend's `UserAccount.IsActive(now)` evaluates the block expiry independent
 - Profile editing is deliberately deferred. The backend exposes a full-replacement PUT but no conditional-write/version or operation-result guarantee. A timeout does not cancel server processing: a subsequent GET can precede that delayed PUT, so it cannot prove settlement or safely unlock another save. This mobile client includes no dormant PUT implementation, simulated completion, or client-invented concurrency token. Future editing requires a separately reviewed backend guarantee and ordering tests.
 - A separate application service observes the validated session and discards profile data/results on logout, UID/account/role changes, or session revalidation. Concurrent equivalent loads share one request. A 401/403 clears the profile; an explicit authorized GET may recover access without reopening cached data prematurely. Raw server titles, payloads, and tokens are not logged or presented as error messages.
 
+### Authorized ranch selection
+
+- `GET /api/v1/accounts/me/ranches` remains part of the existing sequential session validation, after `GET /accounts/me`. The selector consumes that validated snapshot; opening it or changing the choice sends no additional HTTP request. An empty array is a valid session with an explicit empty view, not a fabricated ranch.
+- Each entry has a UUID `ranchId`, known `scope`, required nonblank `name`, `region`, and `district`, and nullable `expiresAt`. Mapping enforces the backend's 160/120/120 text bounds, rejects duplicate ranch identities, and requires an explicit UTC/offset expiration with a valid calendar/time. It never substitutes an ID or sample text for missing metadata.
+- The backend resolves membership and advisory access. A manager's owner membership can yield `Manage`; other memberships yield `Read`. A veterinarian's currently granted advisory may yield `Read` or `ClinicalWrite` with expiration. The client preserves the returned scope rather than inferring elevated access from the account role. Later resource requests must still be authorized by the backend.
+- The server may return an `accessCode` for managed ranches. The selector deliberately discards it during mapping: there is no model property, persisted value, log, or UI control for the code. The displayed ranch identifier is not that credential.
+- `RanchSelectionService` is an IAM application service observing `AuthService`, not a new bounded context or another authentication state machine. It stores only the canonical chosen grant in memory. Even a single available ranch requires an explicit choice; query-string IDs do not choose one. Unknown, duplicate, and expired grants cannot be selected.
+- Selection and available data clear on logout, session checking/revalidation, UID/account/role changes, snapshot replacement, or disposal. Explicit refresh uses the existing session validation and returns to the account route; it does not restore the previous choice. A locale change alone preserves selection. Restarting the app does not restore a ranch choice from preferences.
+- A timer removes locally expired grants and clears an expired choice at the boundary, while pure getters also filter by the current instant. This is a conservative UI restriction, not an offline authorization lease, server-clock substitute, or guarantee that a grant cannot be revoked remotely. Resume and explicit refresh revalidate with the server; no livestock data is fetched by this stage.
+- No invitation, access-code entry, ranch CRUD, advisory decision, animal navigation, local Edge connection, or offline synchronization is introduced in this branch. Those need separately reviewed product scope and implemented contracts.
+
 ### Structure
 
 ```text
@@ -134,9 +146,9 @@ lib/
   features/
     iam/
       domain/                       # Identity, account, permissions, errors, ports
-      application/services/         # Session, registration, and profile reads
+      application/services/         # Session, registration, profiles, ranch choice
       infrastructure/               # Native Firebase and authenticated REST adapters
-      presentation/                 # IAM flows, guarded account and profile views
+      presentation/                 # IAM flows and protected account/profile/ranch views
   shared/
     domain/model/                   # Framework-independent language values
     domain/repositories/            # Preference persistence port
@@ -148,7 +160,7 @@ lib/
 
 Dependencies point inward. Domain code is plain Dart, without Flutter, HTTP, Firebase, or JSON transport dependencies. Application services coordinate ports; presentation never accesses platform storage directly. Constructor injection is used instead of a global service locator. `ChangeNotifier` supplies notifications in the language and session application services, not in domain models.
 
-`go_router` owns the stable route graph: `/login`, `/recover`, `/register`, `/terms`, protected `/account`, and its protected `/account/profile` child; `/` selects login or account. A validated workspace identity cannot open registration. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and the session service drives authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
+`go_router` owns the stable route graph: `/login`, `/recover`, `/register`, `/terms`, protected `/account`, and its protected `/account/profile` and `/account/ranches` children; `/` selects login or account. Every `/account/` descendant requires a validated session. A validated workspace identity cannot open registration. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and the session service drives authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
 
 `shared_preferences` is used only for the language preference. Flutter's `flutter_localizations`, `intl`, and `gen_l10n` provide localizations. `firebase_core` / `firebase_auth` provide native identity, `http` provides the bounded REST transport, and `go_router` provides guarded navigation. The fonts and images are bundled and never fetched at runtime. See [assets/README.md](assets/README.md) for provenance and font licenses.
 
@@ -204,6 +216,18 @@ Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
 - A read-only security review found no P1/P2 findings in this snapshot. Profile editing remains deferred because the backend does not guarantee settlement or ordering of an ambiguous PUT; no profile mutation exists in the client.
 - The latest public `/health` check returned **200**; the service is no longer assumed suspended based on earlier branch checks. Live native authentication and authenticated profile responses remain **unverified**, because approved Firebase options/native registrations are still missing. Test identities/resources are synthetic only; no cloud registrations, native identifiers, or backend files were changed.
 - Native iOS validation still requires macOS/Xcode. The documented upstream Firebase/Kotlin warning persists, but the current debug APK builds successfully. This is not a signed store release or completion of the later ranch, animal, alert, Edge, or offline stages.
+
+### Ranch selection branch verification
+
+Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
+
+- Formatting and static analysis pass; **333 tests pass** in the full suite. The separate production-configuration run passes all **25 tests**. The suite includes **38 selector widget tests**; these are a subset, not an additional production test count.
+- Contract tests cover required ranch metadata/bounds, nullable UTC and numeric-offset expiration, invalid calendar/time values, immutable lists, duplicate identities, known scopes, and discarded access codes. Selection tests cover empty/single/multiple lists without automatic choice, canonical scopes, expiry notifications, initial validation notifications, reentrant refresh, unrelated notifications, UID/account/role changes, rejection, logout, and disposal.
+- EN/ES selector tests cover Android/iOS theme platforms in narrow and landscape layouts at normal and 200% text, long server-provided values, keyboard insets, scope-only presentation for all existing roles, empty/unavailable states, selection/switch/clear, pending refresh privacy, locale preservation, and accessibility guidelines. Router tests reject unauthenticated selection and ignore incoming ranch IDs as selection instructions.
+- The final debug APK builds, installs, and runs on the Android API 37 emulator. Public registration, recovery, terms, EN/ES navigation, absent-configuration submission guards, and persisted language regression checks pass. An initial package-update launch exposed no accessibility root; a forced app relaunch resolved that transient state, and the final checks passed. Native launches with `/account/ranches`, a ranch-ID query, and `/account/profile` return to sign-in without a validated session.
+- Synthetic EN/ES selector previews with bundled fonts/icons were rendered and visually inspected locally; fixture ranch names explicitly identify test data. The preview harness, images, public native captures, and build output remain outside version control. These images are not evidence of real ranch access or a native authenticated selector run.
+- A read-only security review found no P1/P2 findings. Dart source/test directory and filename checks pass; no speculative feature folders, dependencies, platform targets, or management APIs were introduced.
+- Public health initially timed out, then returned **200** on the later check. No authenticated ranch response or real user selection is claimed verified: approved native Firebase options/registrations remain missing. iOS-themed widget tests are not a native iOS build/run; that still requires macOS/Xcode. The existing upstream Firebase/Kotlin warning remains documented and the debug APK builds successfully.
 
 ## Contributing
 

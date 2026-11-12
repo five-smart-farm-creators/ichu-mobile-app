@@ -18,6 +18,8 @@ void main() {
         ranchId: 'ranch-1',
         scope: AccessScope.read,
         name: 'North pasture',
+        region: 'Cusco',
+        district: 'Anta',
       );
       final authentication = FakeAuthenticationRepository();
       final accounts = FakeAccountRepository(
@@ -43,7 +45,13 @@ void main() {
       expect(accounts.calls, <String>['currentAccount', 'ranchAccess']);
       expect(
         () => service.ranches.add(
-          const RanchAccess(ranchId: 'another', scope: AccessScope.read),
+          const RanchAccess(
+            ranchId: 'another',
+            scope: AccessScope.read,
+            name: 'Another ranch',
+            region: 'Cusco',
+            district: 'Anta',
+          ),
         ),
         throwsUnsupportedError,
       );

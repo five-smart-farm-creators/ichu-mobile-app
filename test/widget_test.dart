@@ -1,17 +1,21 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ichu_mobile_app/app.dart';
 import 'package:ichu_mobile_app/core/theme/ichu_colors.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/auth_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/authentication_lifecycle.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/registration_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/professional_profile_service.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/ranch_selection_service.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_failure.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_user.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/professional_profile.dart';
+import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/login_page.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/session_account_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
@@ -33,6 +37,13 @@ const _account = IamAccount(
   role: AccountRole.ranchManager,
   status: 'Active',
 );
+const _ranch = RanchAccess(
+  ranchId: '22222222-2222-4222-8222-222222222222',
+  scope: AccessScope.read,
+  name: 'North ranch',
+  region: 'Cusco',
+  district: 'Anta',
+);
 
 Future<
   ({
@@ -44,6 +55,7 @@ Future<
     FakeAccountRegistrationRepository registrationAccounts,
     ProfessionalProfileService profileService,
     FakeProfessionalProfileRepository profiles,
+    RanchSelectionService ranchSelection,
   })
 >
 pumpApp(
@@ -55,6 +67,7 @@ pumpApp(
   IamAccount account = _account,
   AuthFailure? accountFailure,
   MemoryLanguagePreferences? preferences,
+  List<RanchAccess> ranches = const [],
 }) async {
   final language = LanguageService(
     preferences ?? MemoryLanguagePreferences(language: initialLanguage),
@@ -67,9 +80,11 @@ pumpApp(
   final accounts = FakeAccountRepository()
     ..isConfigured = configured
     ..currentAccountFailure = accountFailure
+    ..ranches = ranches
     ..account = account;
   final lifecycle = AuthenticationLifecycle(identity);
   final auth = AuthService(authentication: lifecycle, accounts: accounts);
+  final ranchSelection = RanchSelectionService(session: auth);
   final profiles = FakeProfessionalProfileRepository()..account = account;
   final profileService = ProfessionalProfileService(
     session: auth,
@@ -91,6 +106,7 @@ pumpApp(
   );
   addTearDown(() async {
     profileService.dispose();
+    ranchSelection.dispose();
     auth.dispose();
     registration.dispose();
     lifecycle.dispose();
@@ -105,6 +121,7 @@ pumpApp(
       authentication: auth,
       registration: registration,
       profileService: profileService,
+      ranchSelection: ranchSelection,
       initialRoute: initialRoute,
     ),
   );
@@ -118,6 +135,7 @@ pumpApp(
     registrationAccounts: registrationAccounts,
     profileService: profileService,
     profiles: profiles,
+    ranchSelection: ranchSelection,
   );
 }
 
@@ -142,6 +160,84 @@ TextField passwordField(WidgetTester tester) => tester.widget<TextField>(
 );
 
 void main() {
+  testWidgets('ranch selection is protected without a validated session', (
+    tester,
+  ) async {
+    final fixture = await pumpApp(tester, initialRoute: '/account/ranches');
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(fixture.ranchSelection.canSelect, isFalse);
+    expect(fixture.ranchSelection.selectedRanch, isNull);
+  });
+
+  for (final role in AccountRole.values) {
+    testWidgets(
+      '${role.name} can choose an authorized ranch and logout clears it',
+      (tester) async {
+        final fixture = await pumpApp(
+          tester,
+          restored: true,
+          ranches: [_ranch],
+          account: IamAccount(
+            id: _account.id,
+            email: _account.email,
+            role: role,
+            status: 'Active',
+          ),
+        );
+        expect(fixture.ranchSelection.selectedRanch, isNull);
+        await tester.ensureVisible(find.byKey(const Key('account-ranches')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('account-ranches')));
+        await tester.pumpAndSettle();
+        expect(find.text('Authorized ranches'), findsOneWidget);
+        final select = find.byKey(Key('ranch-select-${_ranch.ranchId}'));
+        await tester.ensureVisible(select);
+        await tester.pumpAndSettle();
+        await tester.tap(select);
+        await tester.pumpAndSettle();
+        expect(fixture.ranchSelection.selectedRanch, same(_ranch));
+        expect(fixture.ranchSelection.selectedRanch?.scope, AccessScope.read);
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('account-selected-ranch')), findsOneWidget);
+        expect(find.text('North ranch'), findsOneWidget);
+        expect(await fixture.auth.signOut(), isTrue);
+        await tester.pumpAndSettle();
+        expect(find.byType(LoginPage), findsOneWidget);
+        expect(find.text('North ranch'), findsNothing);
+        expect(fixture.ranchSelection.selectedRanch, isNull);
+        expect(fixture.ranchSelection.ranches, isEmpty);
+      },
+    );
+  }
+
+  testWidgets(
+    'route query IDs cannot choose a ranch and refresh does not restore selection',
+    (tester) async {
+      final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+      GoRouter.of(
+        tester.element(find.byType(SessionAccountPage)),
+      ).go('/account/ranches?ranchId=${_ranch.ranchId}');
+      await tester.pumpAndSettle();
+      expect(fixture.ranchSelection.selectedRanch, isNull);
+      expect(fixture.ranchSelection.select(_ranch.ranchId), isTrue);
+      await tester.pumpAndSettle();
+      final pending = Completer<IamAccount>();
+      fixture.accounts.currentAccountCompleter = pending;
+      final refresh = fixture.ranchSelection.refresh();
+      await fixture.accounts.secondCurrentAccountCall.future;
+      await tester.pumpAndSettle();
+      expect(fixture.ranchSelection.selectedRanch, isNull);
+      expect(find.text('North ranch'), findsNothing);
+      pending.complete(_account);
+      await refresh;
+      await tester.pumpAndSettle();
+      expect(find.byType(SessionAccountPage), findsOneWidget);
+      expect(fixture.ranchSelection.selectedRanch, isNull);
+      expect(find.byKey(const Key('account-selected-ranch')), findsNothing);
+    },
+  );
+
   testWidgets(
     'profile deep links remain protected without a validated session',
     (tester) async {
