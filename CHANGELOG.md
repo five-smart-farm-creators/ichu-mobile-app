@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Own-account professional profile contracts with backend field bounds, nullable account profile data, and stable validation/license-conflict failures.
 - Backend-aligned registration contracts for veterinarians and ranch managers, including required ranch-creation fields, creation acknowledgements, and stable registration failures.
 - Isolated native Firebase identity creation, existing-registration sign-in, and verification email support using shared safe SDK initialization and error mapping.
 - A constrained authenticated account-creation POST with backend-shaped payloads and response mapping, no credential fields or automatic retries, and identity-bound GET reconciliation.
