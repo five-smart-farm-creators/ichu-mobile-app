@@ -6,6 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ichu_mobile_app/app.dart';
 import 'package:ichu_mobile_app/core/theme/ichu_colors.dart';
+import 'package:ichu_mobile_app/features/cattle_information/application/services/cattle_read_service.dart';
+import 'package:ichu_mobile_app/features/cattle_information/presentation/pages/cattle_list_page.dart';
+import 'package:ichu_mobile_app/features/cattle_information/presentation/pages/cattle_profile_page.dart';
+import 'package:ichu_mobile_app/features/iam/application/facades/authorized_ranch_session.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/auth_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/authentication_lifecycle.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/registration_service.dart';
@@ -22,6 +26,7 @@ import 'package:ichu_mobile_app/shared/application/services/language_service.dar
 import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 
 import 'support/fake_iam_repositories.dart';
+import 'support/fake_cattle_repository.dart';
 import 'support/fake_registration_repositories.dart';
 import 'support/fake_professional_profile_repository.dart';
 import 'support/memory_language_preferences.dart';
@@ -56,6 +61,8 @@ Future<
     ProfessionalProfileService profileService,
     FakeProfessionalProfileRepository profiles,
     RanchSelectionService ranchSelection,
+    CattleReadService cattleService,
+    FakeCattleRepository cattle,
   })
 >
 pumpApp(
@@ -85,6 +92,13 @@ pumpApp(
   final lifecycle = AuthenticationLifecycle(identity);
   final auth = AuthService(authentication: lifecycle, accounts: accounts);
   final ranchSelection = RanchSelectionService(session: auth);
+  final ranchAccess = AuthorizedRanchSession(
+    session: auth,
+    selection: ranchSelection,
+    authentication: lifecycle,
+  );
+  final cattle = FakeCattleRepository();
+  final cattleService = CattleReadService(access: ranchAccess, cattle: cattle);
   final profiles = FakeProfessionalProfileRepository()..account = account;
   final profileService = ProfessionalProfileService(
     session: auth,
@@ -105,6 +119,8 @@ pumpApp(
     accounts: registrationAccounts,
   );
   addTearDown(() async {
+    cattleService.dispose();
+    ranchAccess.dispose();
     profileService.dispose();
     ranchSelection.dispose();
     auth.dispose();
@@ -122,6 +138,7 @@ pumpApp(
       registration: registration,
       profileService: profileService,
       ranchSelection: ranchSelection,
+      cattleService: cattleService,
       initialRoute: initialRoute,
     ),
   );
@@ -136,6 +153,8 @@ pumpApp(
     profileService: profileService,
     profiles: profiles,
     ranchSelection: ranchSelection,
+    cattleService: cattleService,
+    cattle: cattle,
   );
 }
 
@@ -160,6 +179,58 @@ TextField passwordField(WidgetTester tester) => tester.widget<TextField>(
 );
 
 void main() {
+  for (final path in [
+    '/account/animals',
+    '/account/animals/${_ranch.ranchId}/33333333-3333-4333-8333-333333333333',
+  ]) {
+    testWidgets('animal route $path requires a validated session', (
+      tester,
+    ) async {
+      final fixture = await pumpApp(tester, initialRoute: path);
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(fixture.cattle.listCalls, 0);
+      expect(fixture.cattle.profileCalls, 0);
+    });
+    testWidgets('animal route $path cannot select a ranch from its URL', (
+      tester,
+    ) async {
+      final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+      GoRouter.of(tester.element(find.byType(SessionAccountPage))).go(path);
+      await tester.pumpAndSettle();
+      expect(find.text('Authorized ranches'), findsOneWidget);
+      expect(fixture.ranchSelection.selectedRanch, isNull);
+      expect(fixture.cattle.listCalls, 0);
+      expect(fixture.cattle.profileCalls, 0);
+    });
+  }
+
+  testWidgets(
+    'animal navigation is selection-bound and rejects a foreign ranch route',
+    (tester) async {
+      final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+      expect(fixture.ranchSelection.select(_ranch.ranchId), isTrue);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('account-animals')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account-animals')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CattleListPage), findsOneWidget);
+      expect(fixture.cattle.listCalls, 1);
+      final router = GoRouter.of(tester.element(find.byType(CattleListPage)));
+      router.go(
+        '/account/animals/99999999-9999-4999-8999-999999999999/33333333-3333-4333-8333-333333333333',
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CattleListPage), findsOneWidget);
+      expect(find.byType(CattleProfilePage), findsNothing);
+      expect(fixture.cattle.profileCalls, 0);
+      await fixture.auth.refresh();
+      await tester.pumpAndSettle();
+      expect(fixture.ranchSelection.selectedRanch, isNull);
+      expect(find.byType(CattleListPage), findsNothing);
+    },
+  );
+
   testWidgets('ranch selection is protected without a validated session', (
     tester,
   ) async {

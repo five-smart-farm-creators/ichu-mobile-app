@@ -6,6 +6,9 @@ import 'package:go_router/go_router.dart';
 import 'core/layout/public_shell.dart';
 import 'core/layout/terms_page.dart';
 import 'core/theme/ichu_theme.dart';
+import 'features/cattle_information/application/services/cattle_read_service.dart';
+import 'features/cattle_information/presentation/pages/cattle_list_page.dart';
+import 'features/cattle_information/presentation/pages/cattle_profile_page.dart';
 import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/registration_service.dart';
 import 'features/iam/application/services/professional_profile_service.dart';
@@ -28,6 +31,7 @@ final class IchuApp extends StatefulWidget {
     required this.registration,
     required this.profileService,
     required this.ranchSelection,
+    required this.cattleService,
     this.initialRoute = '/',
     this.onDispose,
   });
@@ -37,6 +41,7 @@ final class IchuApp extends StatefulWidget {
   final RegistrationService registration;
   final ProfessionalProfileService profileService;
   final RanchSelectionService ranchSelection;
+  final CattleReadService cattleService;
   final String initialRoute;
   final VoidCallback? onDispose;
 
@@ -58,7 +63,9 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant IchuApp oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.authentication != widget.authentication) {
+    if (oldWidget.authentication != widget.authentication ||
+        oldWidget.ranchSelection != widget.ranchSelection ||
+        oldWidget.cattleService != widget.cattleService) {
       _router.dispose();
       _router = _createRouter();
       unawaited(widget.authentication.initialize());
@@ -87,7 +94,10 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
 
   GoRouter _createRouter() => GoRouter(
     initialLocation: widget.initialRoute,
-    refreshListenable: widget.authentication,
+    refreshListenable: Listenable.merge([
+      widget.authentication,
+      widget.ranchSelection,
+    ]),
     redirect: (context, state) {
       final signedIn =
           widget.authentication.status == SessionStatus.authenticated;
@@ -99,6 +109,19 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
       if (signedIn &&
           (path == '/login' || path == '/recover' || path == '/register')) {
         return '/account';
+      }
+      if (signedIn &&
+          (path == '/account/animals' ||
+              path.startsWith('/account/animals/'))) {
+        final selected = widget.ranchSelection.selectedRanch;
+        if (selected == null || !widget.cattleService.hasContext) {
+          return '/account/ranches';
+        }
+        final routeRanch = state.pathParameters['ranchId'];
+        if (routeRanch != null &&
+            routeRanch.toLowerCase() != selected.ranchId.toLowerCase()) {
+          return '/account/animals';
+        }
       }
       // External return URLs and unrecognized destinations are never followed.
       return null;
@@ -147,8 +170,40 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           onOpenTerms: () => _router.push('/terms'),
           onOpenProfile: () => _router.push('/account/profile'),
           onOpenRanches: () => _router.push('/account/ranches'),
+          onOpenAnimals: () => _router.push('/account/animals'),
         ),
         routes: [
+          GoRoute(
+            path: 'animals',
+            builder: (context, state) => CattleListPage(
+              language: widget.language,
+              service: widget.cattleService,
+              onBack: () => _router.go('/account'),
+              onOpenRanches: () => _router.go('/account/ranches'),
+              onOpenCattle: (id) {
+                final ranch = widget.ranchSelection.selectedRanch;
+                if (ranch == null) return;
+                _router.push(
+                  '/account/animals/${Uri.encodeComponent(ranch.ranchId)}/${Uri.encodeComponent(id)}',
+                );
+              },
+            ),
+            routes: [
+              GoRoute(
+                path: ':ranchId/:cattleId',
+                builder: (context, state) => CattleProfilePage(
+                  language: widget.language,
+                  service: widget.cattleService,
+                  cattleId: state.pathParameters['cattleId']!,
+                  onBack: () {
+                    widget.cattleService.clearProfile();
+                    _router.go('/account/animals');
+                  },
+                  onOpenRanches: () => _router.go('/account/ranches'),
+                ),
+              ),
+            ],
+          ),
           GoRoute(
             path: 'ranches',
             builder: (context, state) => RanchSelectionPage(

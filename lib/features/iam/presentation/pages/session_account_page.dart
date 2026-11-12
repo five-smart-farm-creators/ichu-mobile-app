@@ -18,6 +18,7 @@ final class SessionAccountPage extends StatelessWidget {
     required this.onOpenTerms,
     required this.onOpenProfile,
     required this.onOpenRanches,
+    this.onOpenAnimals,
   });
 
   final LanguageService language;
@@ -26,6 +27,7 @@ final class SessionAccountPage extends StatelessWidget {
   final VoidCallback onOpenTerms;
   final VoidCallback onOpenProfile;
   final VoidCallback onOpenRanches;
+  final VoidCallback? onOpenAnimals;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -130,6 +132,17 @@ final class SessionAccountPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            if (onOpenAnimals != null) ...[
+              OutlinedButton.icon(
+                key: const Key('account-animals'),
+                onPressed: ranchSelection.selectedRanch != null
+                    ? onOpenAnimals
+                    : null,
+                icon: const Icon(Icons.pets_outlined),
+                label: Text(strings.cattleTitle),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (account.role == AccountRole.veterinarian) ...[
               OutlinedButton.icon(
                 key: const Key('account-professional-profile'),
