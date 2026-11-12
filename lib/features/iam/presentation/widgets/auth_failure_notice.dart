@@ -16,6 +16,10 @@ final class AuthFailureNotice extends StatelessWidget {
     final message = switch (failure.code) {
       AuthFailureCode.configuration => strings.iamErrorConfiguration,
       AuthFailureCode.invalidCredentials => strings.iamErrorInvalidCredentials,
+      AuthFailureCode.registrationRejected =>
+        strings.iamErrorRegistrationRejected,
+      AuthFailureCode.accountAlreadyExists =>
+        strings.iamErrorAccountAlreadyExists,
       AuthFailureCode.emailNotVerified => strings.iamErrorEmailNotVerified,
       AuthFailureCode.accountUnavailable => strings.iamErrorAccountUnavailable,
       AuthFailureCode.forbidden => strings.iamErrorForbidden,

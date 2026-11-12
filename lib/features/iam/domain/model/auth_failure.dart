@@ -2,6 +2,8 @@
 enum AuthFailureCode {
   configuration,
   invalidCredentials,
+  registrationRejected,
+  accountAlreadyExists,
   emailNotVerified,
   accountUnavailable,
   forbidden,
