@@ -382,10 +382,15 @@ void main() {
               return http.Response(
                 jsonEncode(<String, Object?>{
                   'id': '123e4567-e89b-12d3-a456-426614174000',
-                  'email': 'manager@example.test',
-                  'role': 'RanchManager',
+                  'email': 'vet@example.test',
+                  'role': 'Veterinarian',
                   'status': 'Active',
-                  'profile': <String, Object?>{'name': 'Farm manager'},
+                  'profile': <String, Object?>{
+                    'specialty': 'Bovine health',
+                    'licenseNumber': 'CMVP-123',
+                    'yearsOfExperience': 5,
+                    'displayLabel': 'Veterinary profile',
+                  },
                 }),
                 200,
               );
@@ -397,10 +402,12 @@ void main() {
 
         expect(repository.isConfigured, isTrue);
         expect(account.id, '123e4567-e89b-12d3-a456-426614174000');
-        expect(account.email, 'manager@example.test');
-        expect(account.role, AccountRole.ranchManager);
+        expect(account.email, 'vet@example.test');
+        expect(account.role, AccountRole.veterinarian);
         expect(account.status, 'Active');
-        expect(account.status, 'Active');
+        expect(account.profile?.specialty, 'Bovine health');
+        expect(account.profile?.licenseNumber, 'CMVP-123');
+        expect(account.profile?.yearsOfExperience, 5);
       },
     );
 

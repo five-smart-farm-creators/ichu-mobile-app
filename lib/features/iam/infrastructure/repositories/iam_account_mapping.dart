@@ -1,7 +1,8 @@
 import '../../domain/model/auth_failure.dart';
 import '../../domain/model/iam_account.dart';
+import '../../domain/model/professional_profile.dart';
 
-/// Maps account resources shared by current-account and registration flows.
+/// Maps account resources shared by current-account, registration, and profile flows.
 abstract final class IamAccountMapping {
   static IamAccount accountFromPayload(Object? payload) {
     final dto = objectFromPayload(payload);
@@ -14,13 +15,38 @@ abstract final class IamAccountMapping {
       'FieldOperator' => AccountRole.fieldOperator,
       _ => _invalidResponse(),
     };
+    final profile = optionalProfileFromPayload(dto);
 
     return IamAccount(
       id: id,
       email: requiredString(dto, 'email'),
       role: role,
       status: requiredString(dto, 'status'),
+      profile: profile,
     );
+  }
+
+  static ProfessionalProfile? optionalProfileFromPayload(
+    Map<String, dynamic> account,
+  ) {
+    final value = account['profile'];
+    if (value == null) return null;
+
+    final dto = objectFromPayload(value);
+    final yearsOfExperience = dto['yearsOfExperience'];
+    if (yearsOfExperience is! int ||
+        yearsOfExperience < 0 ||
+        yearsOfExperience > 2147483647) {
+      _invalidResponse();
+    }
+
+    final profile = ProfessionalProfile(
+      specialty: requiredString(dto, 'specialty'),
+      licenseNumber: requiredString(dto, 'licenseNumber'),
+      yearsOfExperience: yearsOfExperience,
+    ).normalized();
+    if (!profile.isValid) _invalidResponse();
+    return profile;
   }
 
   static Map<String, dynamic> objectFromPayload(Object? value) {
