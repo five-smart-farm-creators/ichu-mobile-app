@@ -10,6 +10,7 @@ import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/authentication_lifecycle.dart';
 import 'features/iam/application/services/registration_service.dart';
 import 'features/iam/application/services/professional_profile_service.dart';
+import 'features/iam/application/services/ranch_selection_service.dart';
 import 'features/iam/infrastructure/configuration/firebase_client_config.dart';
 import 'features/iam/infrastructure/http/authenticated_api_client.dart';
 import 'features/iam/infrastructure/repositories/firebase_auth_repository.dart';
@@ -71,14 +72,17 @@ Future<void> main() async {
     session: authentication,
     profiles: IamProfessionalProfileRepository(api: api),
   );
+  final ranchSelection = RanchSelectionService(session: authentication);
   runApp(
     IchuApp(
       language: language,
       authentication: authentication,
       registration: registration,
       profileService: profileService,
+      ranchSelection: ranchSelection,
       onDispose: () {
         profileService.dispose();
+        ranchSelection.dispose();
         authentication.dispose();
         registration.dispose();
         identity.dispose();

@@ -9,10 +9,12 @@ import 'core/theme/ichu_theme.dart';
 import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/registration_service.dart';
 import 'features/iam/application/services/professional_profile_service.dart';
+import 'features/iam/application/services/ranch_selection_service.dart';
 import 'features/iam/presentation/pages/login_page.dart';
 import 'features/iam/presentation/pages/recovery_page.dart';
 import 'features/iam/presentation/pages/registration_page.dart';
 import 'features/iam/presentation/pages/professional_profile_page.dart';
+import 'features/iam/presentation/pages/ranch_selection_page.dart';
 import 'features/iam/presentation/pages/session_account_page.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/i18n/generated/app_localizations.dart';
@@ -25,6 +27,7 @@ final class IchuApp extends StatefulWidget {
     required this.authentication,
     required this.registration,
     required this.profileService,
+    required this.ranchSelection,
     this.initialRoute = '/',
     this.onDispose,
   });
@@ -33,6 +36,7 @@ final class IchuApp extends StatefulWidget {
   final AuthService authentication;
   final RegistrationService registration;
   final ProfessionalProfileService profileService;
+  final RanchSelectionService ranchSelection;
   final String initialRoute;
   final VoidCallback? onDispose;
 
@@ -89,7 +93,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           widget.authentication.status == SessionStatus.authenticated;
       final path = state.uri.path;
       if (path == '/') return signedIn ? '/account' : '/login';
-      if ((path == '/account' || path == '/account/profile') && !signedIn) {
+      if ((path == '/account' || path.startsWith('/account/')) && !signedIn) {
         return '/login';
       }
       if (signedIn &&
@@ -139,10 +143,20 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
         builder: (context, state) => SessionAccountPage(
           language: widget.language,
           authentication: widget.authentication,
+          ranchSelection: widget.ranchSelection,
           onOpenTerms: () => _router.push('/terms'),
           onOpenProfile: () => _router.push('/account/profile'),
+          onOpenRanches: () => _router.push('/account/ranches'),
         ),
         routes: [
+          GoRoute(
+            path: 'ranches',
+            builder: (context, state) => RanchSelectionPage(
+              language: widget.language,
+              selection: widget.ranchSelection,
+              onBack: () => _router.go('/account'),
+            ),
+          ),
           GoRoute(
             path: 'profile',
             builder: (context, state) => ProfessionalProfilePage(

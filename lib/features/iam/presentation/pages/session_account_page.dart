@@ -4,27 +4,32 @@ import '../../../../core/layout/public_shell.dart';
 import '../../../../shared/application/services/language_service.dart';
 import '../../../../shared/infrastructure/i18n/generated/app_localizations.dart';
 import '../../application/services/auth_service.dart';
+import '../../application/services/ranch_selection_service.dart';
 import '../../domain/model/iam_account.dart';
 import '../widgets/auth_failure_notice.dart';
 
-/// A minimal real-session view; profile and ranch management are separate work.
+/// Shows validated account data and the optional session-only ranch selection.
 final class SessionAccountPage extends StatelessWidget {
   const SessionAccountPage({
     super.key,
     required this.language,
     required this.authentication,
+    required this.ranchSelection,
     required this.onOpenTerms,
     required this.onOpenProfile,
+    required this.onOpenRanches,
   });
 
   final LanguageService language;
   final AuthService authentication;
+  final RanchSelectionService ranchSelection;
   final VoidCallback onOpenTerms;
   final VoidCallback onOpenProfile;
+  final VoidCallback onOpenRanches;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: authentication,
+    listenable: Listenable.merge([authentication, ranchSelection]),
     builder: (context, _) {
       final strings = AppLocalizations.of(context);
       final theme = Theme.of(context);
@@ -82,8 +87,8 @@ final class SessionAccountPage extends StatelessWidget {
                     ),
                     Text(strings.iamAccountAuthorized),
                     const SizedBox(height: 16),
-                    Text(strings.iamRanchCount(authentication.ranches.length)),
-                    if (authentication.ranches.isEmpty)
+                    Text(strings.iamRanchCount(ranchSelection.ranches.length)),
+                    if (ranchSelection.ranches.isEmpty)
                       Text(strings.iamNoRanches),
                   ],
                 ),
@@ -92,6 +97,39 @@ final class SessionAccountPage extends StatelessWidget {
             if (authentication.error != null)
               AuthFailureNotice(failure: authentication.error!),
             const SizedBox(height: 20),
+            if (ranchSelection.selectedRanch case final selected?)
+              Card(
+                key: const Key('account-selected-ranch'),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        strings.iamSelectedRanch,
+                        style: theme.textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(selected.name, style: theme.textTheme.titleMedium),
+                      Text('${selected.region}, ${selected.district}'),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Text(strings.iamNoRanchSelected),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              key: const Key('account-ranches'),
+              onPressed: ranchSelection.canSelect ? onOpenRanches : null,
+              icon: const Icon(Icons.agriculture_outlined),
+              label: Text(
+                ranchSelection.selectedRanch == null
+                    ? strings.iamOpenRanches
+                    : strings.iamChangeRanch,
+              ),
+            ),
+            const SizedBox(height: 12),
             if (account.role == AccountRole.veterinarian) ...[
               OutlinedButton.icon(
                 key: const Key('account-professional-profile'),
@@ -109,6 +147,7 @@ final class SessionAccountPage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             TextButton(
+              key: const Key('account-refresh'),
               onPressed: () => authentication.refresh(),
               child: Text(strings.iamRefreshSession),
             ),
