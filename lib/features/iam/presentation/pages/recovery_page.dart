@@ -108,7 +108,7 @@ final class _RecoveryPageState extends State<RecoveryPage> {
                         key: const Key('recovery-email'),
                         controller: _email,
                         focusNode: _emailFocus,
-                        maxLength: 120,
+                        maxLength: 254,
                         enabled: !_submitting,
                         keyboardType: TextInputType.emailAddress,
                         autocorrect: false,

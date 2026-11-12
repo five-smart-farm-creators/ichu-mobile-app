@@ -18,12 +18,14 @@ final class LoginPage extends StatefulWidget {
     required this.language,
     required this.authentication,
     required this.onRecover,
+    required this.onRegister,
     required this.onOpenTerms,
   });
 
   final LanguageService language;
   final AuthService authentication;
   final VoidCallback onRecover;
+  final VoidCallback onRegister;
   final VoidCallback onOpenTerms;
 
   @override
@@ -164,7 +166,7 @@ final class _LoginPageState extends State<LoginPage>
                           key: const Key('login-email'),
                           controller: _email,
                           focusNode: _emailFocus,
-                          maxLength: 120,
+                          maxLength: 254,
                           enabled: !busy,
                           keyboardType: TextInputType.emailAddress,
                           textCapitalization: TextCapitalization.none,
@@ -228,9 +230,9 @@ final class _LoginPageState extends State<LoginPage>
                             ),
                           ),
                           validator: (value) =>
-                              CredentialRules.validPassword(value ?? '')
+                              CredentialRules.validSignInPassword(value ?? '')
                               ? null
-                              : strings.iamPasswordInvalid,
+                              : strings.iamSignInPasswordInvalid,
                         ),
                         const SizedBox(height: 8),
                         TextButton(
@@ -270,6 +272,11 @@ final class _LoginPageState extends State<LoginPage>
             ),
             const SizedBox(height: 16),
             Text(strings.iamSignInNote, style: theme.textTheme.bodySmall),
+            TextButton(
+              key: const Key('login-register'),
+              onPressed: busy ? null : () => _leaveFor(widget.onRegister),
+              child: Text(strings.iamCreateAccount),
+            ),
             if (auth.error?.code == AuthFailureCode.signOutFailed)
               TextButton(
                 onPressed: busy ? null : () => auth.signOut(),

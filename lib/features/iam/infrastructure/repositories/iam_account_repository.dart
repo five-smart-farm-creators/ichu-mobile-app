@@ -3,6 +3,7 @@ import '../../domain/model/iam_account.dart';
 import '../../domain/model/ranch_access.dart';
 import '../../domain/repositories/account_repository.dart';
 import '../http/authenticated_api_client.dart';
+import 'iam_account_mapping.dart';
 
 /// Maps authenticated account API responses into IAM domain models.
 final class IamAccountRepository implements AccountRepository {
@@ -16,20 +17,7 @@ final class IamAccountRepository implements AccountRepository {
   @override
   Future<IamAccount> currentAccount() async {
     final payload = await _requireApi().getJson('accounts/me');
-    final dto = _asObject(payload);
-
-    final id = _requiredString(dto, 'id');
-    if (!_isUuid(id)) _invalidResponse();
-    final email = _requiredString(dto, 'email');
-    final status = _requiredString(dto, 'status');
-    final role = switch (_requiredString(dto, 'role')) {
-      'RanchManager' => AccountRole.ranchManager,
-      'Veterinarian' => AccountRole.veterinarian,
-      'FieldOperator' => AccountRole.fieldOperator,
-      _ => _invalidResponse(),
-    };
-
-    return IamAccount(id: id, email: email, role: role, status: status);
+    return IamAccountMapping.accountFromPayload(payload);
   }
 
   @override
@@ -39,11 +27,14 @@ final class IamAccountRepository implements AccountRepository {
 
     return payload
         .map((item) {
-          final dto = _asObject(item);
-          final ranchId = _requiredString(dto, 'ranchId');
-          if (!_isUuid(ranchId)) _invalidResponse();
+          final dto = IamAccountMapping.objectFromPayload(item);
+          final ranchId = IamAccountMapping.requiredString(dto, 'ranchId');
+          if (!IamAccountMapping.isUuid(ranchId)) _invalidResponse();
 
-          final scope = switch (_requiredString(dto, 'scope')) {
+          final scope = switch (IamAccountMapping.requiredString(
+            dto,
+            'scope',
+          )) {
             'Read' => AccessScope.read,
             'ClinicalWrite' => AccessScope.clinicalWrite,
             'Manage' => AccessScope.manage,
@@ -70,17 +61,6 @@ final class IamAccountRepository implements AccountRepository {
     return api;
   }
 
-  Map<String, dynamic> _asObject(Object? value) {
-    if (value is! Map<String, dynamic>) _invalidResponse();
-    return value;
-  }
-
-  String _requiredString(Map<String, dynamic> dto, String key) {
-    final value = dto[key];
-    if (value is! String || value.trim().isEmpty) _invalidResponse();
-    return value;
-  }
-
   String? _optionalString(Map<String, dynamic> dto, String key) {
     final value = dto[key];
     if (value == null) return null;
@@ -101,10 +81,6 @@ final class IamAccountRepository implements AccountRepository {
     if (date == null) _invalidResponse();
     return date;
   }
-
-  bool _isUuid(String value) => RegExp(
-    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-  ).hasMatch(value);
 
   Never _invalidResponse() =>
       throw const AuthFailure(AuthFailureCode.invalidResponse);

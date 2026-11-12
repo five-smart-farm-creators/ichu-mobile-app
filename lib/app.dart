@@ -7,8 +7,10 @@ import 'core/layout/public_shell.dart';
 import 'core/layout/terms_page.dart';
 import 'core/theme/ichu_theme.dart';
 import 'features/iam/application/services/auth_service.dart';
+import 'features/iam/application/services/registration_service.dart';
 import 'features/iam/presentation/pages/login_page.dart';
 import 'features/iam/presentation/pages/recovery_page.dart';
+import 'features/iam/presentation/pages/registration_page.dart';
 import 'features/iam/presentation/pages/session_account_page.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/i18n/generated/app_localizations.dart';
@@ -19,12 +21,14 @@ final class IchuApp extends StatefulWidget {
     super.key,
     required this.language,
     required this.authentication,
+    required this.registration,
     this.initialRoute = '/',
     this.onDispose,
   });
 
   final LanguageService language;
   final AuthService authentication;
+  final RegistrationService registration;
   final String initialRoute;
   final VoidCallback? onDispose;
 
@@ -82,7 +86,8 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
       final path = state.uri.path;
       if (path == '/') return signedIn ? '/account' : '/login';
       if (path == '/account' && !signedIn) return '/login';
-      if (signedIn && (path == '/login' || path == '/recover')) {
+      if (signedIn &&
+          (path == '/login' || path == '/recover' || path == '/register')) {
         return '/account';
       }
       // The only authenticated destination is /account; external return URLs
@@ -100,6 +105,16 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
             widget.authentication.clearError();
             _router.push('/recover');
           },
+          onRegister: () => _router.push('/register'),
+          onOpenTerms: () => _router.push('/terms'),
+        ),
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => RegistrationPage(
+          language: widget.language,
+          registration: widget.registration,
+          onBack: () => _router.go('/login'),
           onOpenTerms: () => _router.push('/terms'),
         ),
       ),

@@ -26,7 +26,7 @@ The available device determines the target for flutter run. iOS builds require m
 - Keep shared Flutter application code in lib/, automated tests in test/, and native platform configuration in android/ or ios/.
 - Android and iOS are the only supported targets. Do not add or restore web or desktop platform folders.
 - Follow Effective Dart, the configured lints in analysis_options.yaml, and the existing project structure.
-- Use lowercase_with_underscores for Dart filenames, UpperCamelCase for types, and lowerCamelCase for members, parameters, and variables. Follow Dart conventions for private identifiers.
+- Use lowercase_with_underscores for Dart filenames and source/test directory names, UpperCamelCase for types, and lowerCamelCase for members, parameters, and variables. Keep Android/iOS platform-required directory names unchanged. Follow Dart conventions for private identifiers.
 - Keep widgets focused. Reuse existing widgets, themes, styles, services, and helpers when they fit; avoid duplicated behavior and unnecessary dependencies.
 - Create directories and abstractions only when required by the feature and consistent with the existing structure.
 - Keep source identifiers, comments, and documentation in English. User-facing text must follow product language requirements and the existing localization approach, if one is present.

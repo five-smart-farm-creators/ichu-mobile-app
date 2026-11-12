@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../domain/model/auth_failure.dart';
 import '../../domain/model/auth_user.dart';
 import '../../domain/repositories/authentication_repository.dart';
+import '../../domain/repositories/identity_registration_repository.dart';
 
 /// Owns native mutation/cleanup intent independently of a session service.
 /// Share this instance with replacement services and the authenticated client.
@@ -14,21 +15,24 @@ final class AuthenticationLifecycle extends ChangeNotifier
 
   final AuthenticationRepository _repository;
   final Set<String> _suppressedUids = <String>{};
-  _NativeSignIn? _pendingSignIn;
+  _NativeIdentityOperation? _pendingIdentityOperation;
   Future<void>? _nativeSignOut;
   AuthFailure? _cleanupFailure;
   bool _disposed = false;
 
-  bool get busy => _pendingSignIn != null || _nativeSignOut != null;
+  bool get busy => _pendingIdentityOperation != null || _nativeSignOut != null;
   AuthFailure? get cleanupFailure => _cleanupFailure;
 
   @override
   bool get isConfigured => _repository.isConfigured;
 
+  bool get canRegister =>
+      isConfigured && _repository is IdentityRegistrationRepository;
+
   bool get _identityHidden =>
       _cleanupFailure != null ||
       _nativeSignOut != null ||
-      (_pendingSignIn?.cancelled ?? false);
+      (_pendingIdentityOperation?.cancelled ?? false);
 
   @override
   AuthUser? get currentUser => _visibleUser(_repository.currentUser);
@@ -41,38 +45,70 @@ final class AuthenticationLifecycle extends ChangeNotifier
       _repository.observeAuthState().map(_visibleUser);
 
   @override
-  Future<AuthUser> signIn(String email, String password) async {
+  Future<AuthUser> signIn(String email, String password) =>
+      _runNativeIdentityOperation(() => _repository.signIn(email, password));
+
+  Future<AuthUser> createUser(String email, String password) {
+    final repository = _repository;
+    if (repository is! IdentityRegistrationRepository || !isConfigured) {
+      return Future<AuthUser>.error(
+        const AuthFailure(AuthFailureCode.configuration),
+      );
+    }
+    return _runNativeIdentityOperation(
+      () => repository.createUser(email, password),
+    );
+  }
+
+  Future<void> sendEmailVerification() async {
+    final repository = _repository;
+    final uid = currentUser?.uid;
+    if (repository is! IdentityRegistrationRepository || !isConfigured) {
+      throw const AuthFailure(AuthFailureCode.configuration);
+    }
+    if (uid == null || busy) {
+      throw const AuthFailure(AuthFailureCode.accountUnavailable);
+    }
+    await repository.sendEmailVerification();
+    if (currentUser?.uid != uid) {
+      throw const AuthFailure(AuthFailureCode.accountUnavailable);
+    }
+  }
+
+  Future<AuthUser> _runNativeIdentityOperation(
+    Future<AuthUser> Function() operation,
+  ) async {
     if (_cleanupFailure != null) throw _cleanupFailure!;
     if (busy) throw const AuthFailure(AuthFailureCode.serviceUnavailable);
 
-    final attempt = _NativeSignIn();
-    _pendingSignIn = attempt;
+    final attempt = _NativeIdentityOperation();
+    _pendingIdentityOperation = attempt;
     _notify();
     try {
       late final AuthUser user;
       try {
-        user = await _repository.signIn(email, password);
+        user = await operation();
       } catch (_) {
         if (attempt.cancelled) {
-          await _finishCancelledSignIn(null);
+          await _finishCancelledIdentityOperation(null);
         }
         rethrow;
       }
       if (attempt.cancelled) {
-        await _finishCancelledSignIn(user.uid);
+        await _finishCancelledIdentityOperation(user.uid);
         throw const AuthFailure(AuthFailureCode.accountUnavailable);
       }
       _suppressedUids.remove(user.uid);
       return user;
     } finally {
-      _pendingSignIn = null;
+      _pendingIdentityOperation = null;
       _notify();
     }
   }
 
   @override
   Future<void> signOut() async {
-    _pendingSignIn?.cancelled = true;
+    _pendingIdentityOperation?.cancelled = true;
     try {
       final currentUid = _repository.currentUser?.uid;
       if (currentUid != null) _suppressedUids.add(currentUid);
@@ -82,7 +118,7 @@ final class AuthenticationLifecycle extends ChangeNotifier
     await _signOutNative();
   }
 
-  Future<void> _finishCancelledSignIn(String? uid) async {
+  Future<void> _finishCancelledIdentityOperation(String? uid) async {
     if (uid != null) _suppressedUids.add(uid);
     // The initial logout may still be in flight. Never let a later cleanup
     // overlap a new native sign-in or assume an earlier logout cleared it.
@@ -170,6 +206,6 @@ final class AuthenticationLifecycle extends ChangeNotifier
   }
 }
 
-final class _NativeSignIn {
+final class _NativeIdentityOperation {
   bool cancelled = false;
 }

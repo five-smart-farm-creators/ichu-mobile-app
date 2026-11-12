@@ -11,7 +11,8 @@ void main() {
       expect(CredentialRules.validEmail('user example.test'), isFalse);
       expect(CredentialRules.validEmail('user@ example.test'), isFalse);
       expect(CredentialRules.validEmail('user@@example.test'), isFalse);
-      expect(CredentialRules.validEmail('${'a' * 110}@example.test'), isFalse);
+      expect(CredentialRules.validEmail('${'a' * 241}@example.test'), isTrue);
+      expect(CredentialRules.validEmail('${'a' * 242}@example.test'), isFalse);
     },
   );
 
@@ -21,5 +22,17 @@ void main() {
     expect(CredentialRules.validPassword('a' * 128), isTrue);
     expect(CredentialRules.validPassword('a' * 129), isFalse);
     expect(CredentialRules.validPassword(' value  '), isTrue);
+    expect(CredentialRules.validPassword(' ' * 8), isFalse);
   });
+
+  test(
+    'sign-in accepts an existing password without imposing creation length',
+    () {
+      expect(CredentialRules.validSignInPassword('legacy'), isTrue);
+      expect(CredentialRules.validSignInPassword(''), isFalse);
+      expect(CredentialRules.validSignInPassword(' ' * 8), isFalse);
+      expect(CredentialRules.validSignInPassword(' exact password '), isTrue);
+      expect(CredentialRules.validSignInPassword('a' * 129), isFalse);
+    },
+  );
 }
