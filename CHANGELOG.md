@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented native Firebase setup, session/transport guarantees, verified Android checks, and the remaining live-service and iOS validation blockers.
 - Documented registration contracts, isolated identity ownership, per-UID reconciliation, remaining native/live-service limits, and source/test folder naming standards.
 - Documented the report-aligned field-focused mobile scope, sequential delivery boundaries, profile-write safety prerequisite, read-only profile checks, and current live/native validation limits.
+- Documented authorized ranch selection, discarded access credentials, conservative expiration handling, session-only context ownership, and verified selector/native regression checks with explicit live-integration limits.
 
 ### Changed
 - Restricted mobile professional profiles to read-only until the backend can safely order or identify ambiguous writes; removed unused editor contracts, save errors, and mutation transport code.
