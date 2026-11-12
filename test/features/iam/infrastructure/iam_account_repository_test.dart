@@ -466,7 +466,8 @@ void main() {
           MockClient(
             (_) async => http.Response(
               '[{"ranchId":"223e4567-e89b-12d3-a456-426614174000",'
-              '"scope":"Read","expiresAt":"2030-02-03T04:05:06"}]',
+              '"scope":"Read","name":"North ranch","region":"Cusco",'
+              '"district":"Anta","expiresAt":"2030-02-03T04:05:06"}]',
               200,
             ),
           ),
@@ -479,7 +480,7 @@ void main() {
     });
 
     test(
-      'returns an empty ranch list and maps valid optional ranch fields',
+      'returns an empty ranch list and maps required metadata and expiration',
       () async {
         final emptyRepository = IamAccountRepository(
           api: _api(
@@ -496,6 +497,7 @@ void main() {
               (_) async => http.Response(
                 '[{"ranchId":"223e4567-e89b-12d3-a456-426614174000",'
                 '"scope":"ClinicalWrite","name":"North ranch",'
+                '"region":"Cusco","district":"Anta",'
                 '"expiresAt":"2030-02-03T04:05:06Z"}]',
                 200,
               ),
@@ -507,6 +509,8 @@ void main() {
         expect(access.ranchId, '223e4567-e89b-12d3-a456-426614174000');
         expect(access.scope, AccessScope.clinicalWrite);
         expect(access.name, 'North ranch');
+        expect(access.region, 'Cusco');
+        expect(access.district, 'Anta');
         expect(access.expiresAt, DateTime.utc(2030, 2, 3, 4, 5, 6));
       },
     );
@@ -524,8 +528,178 @@ void main() {
         AuthFailureCode.configuration,
       );
     });
+
+    test(
+      'reads immutable authorized ranches without retaining access codes',
+      () async {
+        final requests = <http.Request>[];
+        final repository = IamAccountRepository(
+          api: _api(
+            _FakeAuthenticationRepository(user: _identity('uid-1')),
+            MockClient((request) async {
+              requests.add(request);
+              return http.Response(
+                jsonEncode([
+                  _ranchPayload()..addAll({
+                    'scope': 'Manage',
+                    'accessCode': 'synthetic-private-access-code',
+                  }),
+                ]),
+                200,
+              );
+            }),
+          ),
+        );
+        final ranches = await repository.ranchAccess();
+        final request = requests.single;
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/v1/accounts/me/ranches');
+        expect(request.body, isEmpty);
+        expect(request.followRedirects, isFalse);
+        expect(ranches.single.scope, AccessScope.manage);
+        expect(ranches.single.name, 'North ranch');
+        expect(ranches.single.expiresAt, isNull);
+        expect(() => ranches.clear(), throwsUnsupportedError);
+        expect(
+          ranches.single.toString(),
+          isNot(contains('synthetic-private-access-code')),
+        );
+      },
+    );
+
+    test(
+      'rejects missing or invalid required ranch metadata and duplicate IDs',
+      () async {
+        final invalid = <Object?>['not-a-ranch'];
+        for (final (field, maxLength) in [
+          ('name', 160),
+          ('region', 120),
+          ('district', 120),
+        ]) {
+          invalid.add(_ranchPayload()..remove(field));
+          for (final value in <Object?>[null, ' ', 4, 'x' * (maxLength + 1)]) {
+            invalid.add(_ranchPayload()..[field] = value);
+          }
+        }
+        for (final payload in invalid) {
+          final repository = IamAccountRepository(
+            api: _api(
+              _FakeAuthenticationRepository(user: _identity('uid-1')),
+              MockClient(
+                (_) async => http.Response(jsonEncode([payload]), 200),
+              ),
+            ),
+          );
+          await _expectFailure(
+            repository.ranchAccess(),
+            AuthFailureCode.invalidResponse,
+          );
+        }
+        final duplicateRepository = IamAccountRepository(
+          api: _api(
+            _FakeAuthenticationRepository(user: _identity('uid-1')),
+            MockClient(
+              (_) async => http.Response(
+                jsonEncode([
+                  _ranchPayload(),
+                  _ranchPayload()
+                    ..['ranchId'] = '223E4567-E89B-12D3-A456-426614174000',
+                ]),
+                200,
+              ),
+            ),
+          ),
+        );
+        await _expectFailure(
+          duplicateRepository.ranchAccess(),
+          AuthFailureCode.invalidResponse,
+        );
+      },
+    );
+
+    test(
+      'keeps valid UTC and offset expiration instants and field bounds',
+      () async {
+        for (final expiration in [
+          null,
+          '2030-02-03T04:05:06Z',
+          '2030-02-02T23:05:06-05:00',
+          '2030-02-03T04:05:06.1234567+00:00',
+        ]) {
+          final repository = IamAccountRepository(
+            api: _api(
+              _FakeAuthenticationRepository(user: _identity('uid-1')),
+              MockClient(
+                (_) async => http.Response(
+                  jsonEncode([
+                    _ranchPayload()..addAll({
+                      'name': 'n' * 160,
+                      'region': 'r' * 120,
+                      'district': 'd' * 120,
+                      'expiresAt': expiration,
+                    }),
+                  ]),
+                  200,
+                ),
+              ),
+            ),
+          );
+          final access = (await repository.ranchAccess()).single;
+          expect(access.name, 'n' * 160);
+          expect(
+            access.expiresAt,
+            expiration == null ? null : DateTime.parse(expiration),
+          );
+          if (access.expiresAt != null) expect(access.expiresAt!.isUtc, isTrue);
+        }
+      },
+    );
+
+    test(
+      'rejects ambiguous dates and calendar normalization in grants',
+      () async {
+        for (final expiration in <Object?>[
+          '',
+          5,
+          '2030-02-03T04:05:06',
+          '2030-02-30T04:05:06Z',
+          '2030-13-01T04:05:06Z',
+          '2030-02-03T24:05:06Z',
+          '2030-02-03T04:60:06Z',
+          '2030-02-03T04:05:60Z',
+          '2030-02-03T04:05:06+15:00',
+          '2030-02-03T04:05:06+14:01',
+          '2030-02-03T04:05:06+02:99',
+        ]) {
+          final repository = IamAccountRepository(
+            api: _api(
+              _FakeAuthenticationRepository(user: _identity('uid-1')),
+              MockClient(
+                (_) async => http.Response(
+                  jsonEncode([_ranchPayload()..['expiresAt'] = expiration]),
+                  200,
+                ),
+              ),
+            ),
+          );
+          await _expectFailure(
+            repository.ranchAccess(),
+            AuthFailureCode.invalidResponse,
+          );
+        }
+      },
+    );
   });
 }
+
+Map<String, Object?> _ranchPayload() => {
+  'ranchId': '223e4567-e89b-12d3-a456-426614174000',
+  'scope': 'Read',
+  'name': 'North ranch',
+  'region': 'Cusco',
+  'district': 'Anta',
+  'expiresAt': null,
+};
 
 AuthenticatedApiClient _api(
   _FakeAuthenticationRepository authentication,
