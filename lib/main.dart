@@ -8,10 +8,13 @@ import 'app.dart';
 import 'core/config/app_config.dart';
 import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/authentication_lifecycle.dart';
+import 'features/iam/application/services/registration_service.dart';
 import 'features/iam/infrastructure/configuration/firebase_client_config.dart';
 import 'features/iam/infrastructure/http/authenticated_api_client.dart';
 import 'features/iam/infrastructure/repositories/firebase_auth_repository.dart';
+import 'features/iam/infrastructure/repositories/firebase_registration_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_account_repository.dart';
+import 'features/iam/infrastructure/repositories/iam_account_registration_repository.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/preferences/device_language_preference_repository.dart';
 
@@ -28,12 +31,28 @@ Future<void> main() async {
     TargetPlatform.iOS when !kIsWeb => FirebaseNativePlatform.ios,
     _ => FirebaseNativePlatform.unsupported,
   };
+  final firebaseConfig = FirebaseClientConfig.fromEnvironment(platform);
   final identity = AuthenticationLifecycle(
-    await FirebaseAuthRepository.initialize(
-      FirebaseClientConfig.fromEnvironment(platform),
-    ),
+    await FirebaseAuthRepository.initialize(firebaseConfig),
+  );
+  final registrationIdentity = AuthenticationLifecycle(
+    await FirebaseRegistrationRepository.initialize(firebaseConfig),
   );
   final client = http.Client();
+  final registration = RegistrationService(
+    authentication: registrationIdentity,
+    accounts: IamAccountRegistrationRepository(
+      api: config.isApiConfigured
+          ? AuthenticatedApiClient(
+              baseUri: config.apiBaseUri!,
+              client: client,
+              authentication: registrationIdentity,
+              languageTag: () =>
+                  language.current.code == 'es' ? 'es-419' : 'en-US',
+            )
+          : null,
+    ),
+  );
   final authentication = AuthService(
     authentication: identity,
     accounts: IamAccountRepository(
@@ -52,9 +71,12 @@ Future<void> main() async {
     IchuApp(
       language: language,
       authentication: authentication,
+      registration: registration,
       onDispose: () {
         authentication.dispose();
+        registration.dispose();
         identity.dispose();
+        registrationIdentity.dispose();
         client.close();
         language.dispose();
       },

@@ -6,6 +6,7 @@ import 'package:ichu_mobile_app/app.dart';
 import 'package:ichu_mobile_app/core/theme/ichu_colors.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/auth_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/authentication_lifecycle.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/registration_service.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_failure.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_user.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
@@ -15,6 +16,7 @@ import 'package:ichu_mobile_app/shared/application/services/language_service.dar
 import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 
 import 'support/fake_iam_repositories.dart';
+import 'support/fake_registration_repositories.dart';
 import 'support/memory_language_preferences.dart';
 
 const _user = AuthUser(
@@ -34,6 +36,9 @@ Future<
     AuthService auth,
     FakeAuthenticationRepository identity,
     FakeAccountRepository accounts,
+    RegistrationService registration,
+    FakeIdentityRegistrationRepository registrationIdentity,
+    FakeAccountRegistrationRepository registrationAccounts,
   })
 >
 pumpApp(
@@ -60,21 +65,46 @@ pumpApp(
     ..account = account;
   final lifecycle = AuthenticationLifecycle(identity);
   final auth = AuthService(authentication: lifecycle, accounts: accounts);
+  final registrationIdentity = FakeIdentityRegistrationRepository()
+    ..isConfigured = configured
+    ..createUserResult = const AuthUser(
+      uid: 'synthetic-registration-uid',
+      email: 'new-user@example.test',
+      emailVerified: false,
+    );
+  final registrationAccounts = FakeAccountRegistrationRepository()
+    ..isConfigured = configured;
+  final registrationLifecycle = AuthenticationLifecycle(registrationIdentity);
+  final registration = RegistrationService(
+    authentication: registrationLifecycle,
+    accounts: registrationAccounts,
+  );
   addTearDown(() async {
     auth.dispose();
+    registration.dispose();
     lifecycle.dispose();
+    registrationLifecycle.dispose();
     await identity.close();
+    await registrationIdentity.close();
     language.dispose();
   });
   await tester.pumpWidget(
     IchuApp(
       language: language,
       authentication: auth,
+      registration: registration,
       initialRoute: initialRoute,
     ),
   );
   await tester.pumpAndSettle();
-  return (auth: auth, identity: identity, accounts: accounts);
+  return (
+    auth: auth,
+    identity: identity,
+    accounts: accounts,
+    registration: registration,
+    registrationIdentity: registrationIdentity,
+    registrationAccounts: registrationAccounts,
+  );
 }
 
 Future<void> fillSignIn(
@@ -98,6 +128,74 @@ TextField passwordField(WidgetTester tester) => tester.widget<TextField>(
 );
 
 void main() {
+  testWidgets(
+    'registration uses an isolated identity and cannot grant workspace access',
+    (tester) async {
+      final fixture = await pumpApp(tester);
+      await fillSignIn(tester);
+      await tester.ensureVisible(find.byKey(const Key('login-register')));
+      await tester.tap(find.byKey(const Key('login-register')));
+      await tester.pumpAndSettle();
+      expect(find.text('Create your ICHU account'), findsOneWidget);
+      final coveredPassword = find.byKey(
+        const Key('login-password'),
+        skipOffstage: false,
+      );
+      expect(
+        tester.widget<TextFormField>(coveredPassword).controller!.text,
+        isEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const Key('registration-email')),
+        'new-user@example.test',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('registration-password')),
+      );
+      await tester.enterText(
+        find.byKey(const Key('registration-password')),
+        'synthetic-password',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('registration-confirmation')),
+      );
+      await tester.enterText(
+        find.byKey(const Key('registration-confirmation')),
+        'synthetic-password',
+      );
+      await tester.ensureVisible(find.byKey(const Key('registration-submit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('registration-submit')));
+      await tester.pumpAndSettle();
+      expect(
+        fixture.registration.status,
+        RegistrationStatus.awaitingVerification,
+      );
+      expect(fixture.auth.status, SessionStatus.signedOut);
+      expect(fixture.identity.currentUser, isNull);
+      expect(fixture.accounts.currentAccountCalls, 0);
+      expect(find.byType(SessionAccountPage), findsNothing);
+      await tester.tap(find.byTooltip('Back to sign in'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(fixture.registrationIdentity.currentUser, isNull);
+    },
+  );
+
+  testWidgets(
+    'a restored verified workspace redirects registration to account',
+    (tester) async {
+      final fixture = await pumpApp(
+        tester,
+        restored: true,
+        initialRoute: '/register',
+      );
+      expect(find.byType(SessionAccountPage), findsOneWidget);
+      expect(find.text('Create your ICHU account'), findsNothing);
+      expect(fixture.registration.user, isNull);
+    },
+  );
+
   test(
     'photo scrim maintains contrast against the brightest possible image pixel',
     () {
@@ -203,10 +301,13 @@ void main() {
       await tester.tap(find.byKey(const Key('login-submit')));
       await tester.pumpAndSettle();
       expect(
-        find.text('Enter a valid email address, up to 120 characters.'),
+        find.text('Enter a valid email address, up to 254 characters.'),
         findsOneWidget,
       );
-      expect(find.text('Use 8–128 characters.'), findsOneWidget);
+      expect(
+        find.text('Enter your password, up to 128 characters.'),
+        findsOneWidget,
+      );
       expect(fixture.auth.status, SessionStatus.signedOut);
       expect(fixture.identity.currentUser, isNull);
       final emailField = tester.widget<TextField>(
@@ -430,7 +531,7 @@ void main() {
       await tester.tap(find.byKey(const Key('recovery-submit')));
       await tester.pumpAndSettle();
       expect(
-        find.text('Enter a valid email address, up to 120 characters.'),
+        find.text('Enter a valid email address, up to 254 characters.'),
         findsOneWidget,
       );
       expect(find.text('Check your email'), findsNothing);
@@ -521,10 +622,10 @@ void main() {
           initialRoute: route,
           restored: route == '/account',
         );
-        expect(tester, meetsGuideline(androidTapTargetGuideline));
-        expect(tester, meetsGuideline(iOSTapTargetGuideline));
-        expect(tester, meetsGuideline(labeledTapTargetGuideline));
-        expect(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
       } finally {
         semantics.dispose();
       }

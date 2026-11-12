@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Isolated native Firebase identity creation, existing-registration sign-in, and verification email support using shared safe SDK initialization and error mapping.
 - A constrained authenticated account-creation POST with backend-shaped payloads and response mapping, no credential fields or automatic retries, and identity-bound GET reconciliation.
 - Registration orchestration for verification, continuation, cancellation, and cleanup, with per-UID uncertain-outcome tracking and regression coverage across native/server async races.
+- Localized registration and verification screens with supported-role selection, manager ranch fields, explicit safe reconciliation, and accessible mobile/large-text layouts.
 - Framework-independent IAM identity/account/access contracts, safe authentication failures, and shared credential input rules.
 - Native Firebase, HTTP, and guarded-routing dependencies, with an example for approved public client settings and ignored local overrides.
 - Native Firebase identity/recovery and same-origin authenticated account adapters, with per-request SDK tokens, disabled redirects, bounded responses, and safe localized failure categories.
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented native Firebase setup, session/transport guarantees, verified Android checks, and the remaining live-service and iOS validation blockers.
 
 ### Changed
+- Aligned mobile email inputs with the backend's 254-character bound and kept new-account password rules separate from existing-identity sign-in validation.
 - Made backend contracts and tests authoritative for mobile behavior; the unfinished Web App remains a visual reference only.
 - Kept native cleanup intent and failed-sign-out retry requirements in a shared authentication lifecycle so session-service disposal cannot reopen a discarded identity.
 - Aligned account access with backend authorization and time-based block expiry instead of copying the unfinished web client's status-label restriction; the account view reports server-validated access without relabeling stored status.

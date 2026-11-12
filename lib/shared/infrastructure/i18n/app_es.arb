@@ -24,6 +24,7 @@
   "iamEmailInvalid": "Ingresa un correo electrónico válido, de hasta 254 caracteres.",
   "iamPassword": "Contraseña",
   "iamPasswordInvalid": "Usa entre 8 y 128 caracteres.",
+  "iamSignInPasswordInvalid": "Ingresa tu contraseña, de hasta 128 caracteres.",
   "iamShowPassword": "Mostrar contraseña",
   "iamHidePassword": "Ocultar contraseña",
   "iamSignIn": "Iniciar sesión",

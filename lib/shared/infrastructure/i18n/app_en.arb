@@ -24,6 +24,7 @@
   "iamEmailInvalid": "Enter a valid email address, up to 254 characters.",
   "iamPassword": "Password",
   "iamPasswordInvalid": "Use 8–128 characters.",
+  "iamSignInPasswordInvalid": "Enter your password, up to 128 characters.",
   "iamShowPassword": "Show password",
   "iamHidePassword": "Hide password",
   "iamSignIn": "Sign in",
