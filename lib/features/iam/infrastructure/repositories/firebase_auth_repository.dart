@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:firebase_core/firebase_core.dart';
 
 import '../../domain/model/auth_failure.dart';
 import '../../domain/model/auth_user.dart';
 import '../../domain/repositories/authentication_repository.dart';
 import '../configuration/firebase_client_config.dart';
+import '../configuration/firebase_client_initializer.dart';
+import 'firebase_identity_mapping.dart';
 
 final class FirebaseAuthRepository implements AuthenticationRepository {
   FirebaseAuthRepository({required this._auth});
@@ -20,37 +21,11 @@ final class FirebaseAuthRepository implements AuthenticationRepository {
   static Future<FirebaseAuthRepository> initialize(
     FirebaseClientConfig config,
   ) async {
-    final options = config.options;
-    if (options == null) {
-      return FirebaseAuthRepository(auth: null);
-    }
-
-    try {
-      FirebaseApp? existingApp;
-      for (final candidate in Firebase.apps) {
-        if (candidate.name == _appName) {
-          existingApp = candidate;
-          break;
-        }
-      }
-
-      late final FirebaseApp app;
-      if (existingApp != null) {
-        if (existingApp.options != options) {
-          return FirebaseAuthRepository(auth: null);
-        }
-        app = existingApp;
-      } else {
-        app = await Firebase.initializeApp(name: _appName, options: options);
-      }
-
-      return FirebaseAuthRepository(
-        auth: firebase_auth.FirebaseAuth.instanceFor(app: app),
-      );
-    } on Object {
-      // Initialization failures are intentionally not exposed or logged.
-      return FirebaseAuthRepository(auth: null);
-    }
+    final auth = await FirebaseClientInitializer.initialize(
+      config,
+      name: _appName,
+    );
+    return FirebaseAuthRepository(auth: auth);
   }
 
   @override
@@ -60,9 +35,9 @@ final class FirebaseAuthRepository implements AuthenticationRepository {
   AuthUser? get currentUser {
     try {
       final user = _auth?.currentUser;
-      return user == null ? null : _mapUser(user);
+      return FirebaseIdentityMapping.mapUserOrNull(user);
     } on Object catch (error) {
-      throw _mapFailure(error);
+      throw FirebaseIdentityMapping.mapFailure(error);
     }
   }
 
@@ -78,13 +53,16 @@ final class FirebaseAuthRepository implements AuthenticationRepository {
     try {
       return auth.authStateChanges().transform(
         StreamTransformer<firebase_auth.User?, AuthUser?>.fromHandlers(
-          handleData: (user, sink) => sink.add(_mapUserOrNull(user)),
-          handleError: (error, stackTrace, sink) =>
-              sink.addError(_mapFailure(error), stackTrace),
+          handleData: (user, sink) =>
+              sink.add(FirebaseIdentityMapping.mapUserOrNull(user)),
+          handleError: (error, stackTrace, sink) => sink.addError(
+            FirebaseIdentityMapping.mapFailure(error),
+            stackTrace,
+          ),
         ),
       );
     } on Object catch (error) {
-      return Stream<AuthUser?>.error(_mapFailure(error));
+      return Stream<AuthUser?>.error(FirebaseIdentityMapping.mapFailure(error));
     }
   }
 
@@ -99,7 +77,7 @@ final class FirebaseAuthRepository implements AuthenticationRepository {
       if (user == null) {
         throw const AuthFailure(AuthFailureCode.invalidResponse);
       }
-      return _mapUser(user);
+      return FirebaseIdentityMapping.mapUser(user);
     });
   }
 
@@ -114,7 +92,7 @@ final class FirebaseAuthRepository implements AuthenticationRepository {
       if (refreshedUser == null) return null;
 
       await refreshedUser.getIdToken(true);
-      return _mapUser(refreshedUser);
+      return FirebaseIdentityMapping.mapUser(refreshedUser);
     });
   }
 
@@ -144,10 +122,12 @@ final class FirebaseAuthRepository implements AuthenticationRepository {
     try {
       await auth.sendPasswordResetEmail(email: email);
     } on firebase_auth.FirebaseAuthException catch (error) {
-      if (_normalizedCode(error) == 'user-not-found') return;
-      throw _mapFailure(error);
+      if (FirebaseIdentityMapping.normalizedCode(error) == 'user-not-found') {
+        return;
+      }
+      throw FirebaseIdentityMapping.mapFailure(error);
     } on Object catch (error) {
-      throw _mapFailure(error);
+      throw FirebaseIdentityMapping.mapFailure(error);
     }
   }
 
@@ -173,57 +153,7 @@ final class FirebaseAuthRepository implements AuthenticationRepository {
     } on AuthFailure {
       rethrow;
     } on Object catch (error) {
-      throw _mapFailure(error, fallback: fallback);
+      throw FirebaseIdentityMapping.mapFailure(error, fallback: fallback);
     }
-  }
-
-  static AuthUser? _mapUserOrNull(firebase_auth.User? user) =>
-      user == null ? null : _mapUser(user);
-
-  static AuthUser _mapUser(firebase_auth.User user) {
-    return AuthUser(
-      uid: user.uid,
-      email: user.email ?? '',
-      emailVerified: user.emailVerified,
-      displayName: user.displayName,
-    );
-  }
-
-  static AuthFailure _mapFailure(
-    Object error, {
-    AuthFailureCode fallback = AuthFailureCode.unknown,
-  }) {
-    if (error is AuthFailure) return error;
-    if (error is! firebase_auth.FirebaseAuthException) {
-      return AuthFailure(fallback);
-    }
-
-    final code = _normalizedCode(error);
-    final failureCode = switch (code) {
-      'invalid-credential' ||
-      'invalid-login-credentials' ||
-      'invalid-email' ||
-      'user-not-found' ||
-      'wrong-password' => AuthFailureCode.invalidCredentials,
-      'user-disabled' => AuthFailureCode.accountUnavailable,
-      'network-request-failed' => AuthFailureCode.network,
-      'too-many-requests' => AuthFailureCode.serviceUnavailable,
-      'invalid-api-key' ||
-      'api-key-not-valid' ||
-      'app-not-authorized' ||
-      'invalid-app-id' ||
-      'project-not-found' ||
-      'operation-not-allowed' ||
-      'configuration-not-found' ||
-      'missing-ios-bundle-id' => AuthFailureCode.configuration,
-      _ => fallback,
-    };
-
-    return AuthFailure(failureCode);
-  }
-
-  static String _normalizedCode(firebase_auth.FirebaseAuthException error) {
-    final parts = error.code.toLowerCase().split('/');
-    return parts.last;
   }
 }
