@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Framework-independent IAM identity/account/access contracts, safe authentication failures, and shared credential input rules.
 - Native Firebase, HTTP, and guarded-routing dependencies, with an example for approved public client settings and ignored local overrides.
+- Native Firebase identity/recovery and same-origin authenticated account adapters, with per-request SDK tokens, disabled redirects, bounded responses, and safe localized failure categories.
 - Validated, non-secret API build configuration with HTTPS enforcement outside local development and no default production endpoint.
 - English and Latin American Spanish catalogs, with generated localizations and equal-key checks.
 - A device language preference with English fallback, session-only recovery on storage failures, and ordered writes that prevent stale preferences after timeouts.
