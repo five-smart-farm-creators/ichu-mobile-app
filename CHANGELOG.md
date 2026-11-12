@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Read-only animal contracts with immutable stage histories, timezone-independent calendar dates, exact ear-tag/status searches, and server-bounded replacement pagination.
+- Public IAM facade exposing an opaque current ranch context and per-request SDK tokens without leaking IAM infrastructure into Cattle Information.
+- Fixed ranch-scoped animal GET adapters with strict tenant/identity/resource validation, bounded responses, disabled redirects, and no automatic replay.
+- Independent list/detail coordination with stale-response fencing across selection, identity, revalidation, logout, and permission failures.
+- Protected EN/ES animal list/profile pages, explicit empty/error states, productive-stage history, and four distinct collar integration presentations without editing or invented live telemetry.
 - Required server-issued ranch names and locations with strict access-list mapping, immutable results, duplicate-ID rejection, and validated expiration instants; access codes are intentionally discarded.
 - Explicit in-memory selection from validated ranch grants, preserving backend scopes and clearing choices on session/snapshot changes, logout, disposal, and local grant expiry.
 - Protected EN/ES ranch selection and account summaries, explicit empty states, refresh/clear actions, accessible scope labels, and Android/iOS large-text layout coverage without management controls.
@@ -38,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented authorized ranch selection, discarded access credentials, conservative expiration handling, session-only context ownership, and verified selector/native regression checks with explicit live-integration limits.
 
 ### Changed
+- Extended account navigation with selection-bound animal reads and ranch-scoped detail guards; documented topic-branch cleanup after confirmed merges while preserving integration/release branches and unmerged work.
 - Restricted mobile professional profiles to read-only until the backend can safely order or identify ambiguous writes; removed unused editor contracts, save errors, and mutation transport code.
 - Aligned mobile email inputs with the backend's 254-character bound and kept new-account password rules separate from existing-identity sign-in validation.
 - Made backend contracts and tests authoritative for mobile behavior; the unfinished Web App remains a visual reference only.

@@ -44,7 +44,7 @@ Add or update tests for changed behavior. Report any checks that could not be ru
 
 ### DDD boundaries and Flutter composition
 
-- Organize authorized business capabilities under `lib/features/<context>/`, using Dart `lowercase_with_underscores` names. IAM is the current implemented context; do not create the other product contexts or unused folders speculatively.
+- Organize authorized business capabilities under `lib/features/<context>/`, using Dart `lowercase_with_underscores` names. IAM and read-only Cattle Information are implemented; do not create the other product contexts or unused folders speculatively.
 - Add `domain/model/` and `domain/repositories/` when models and ports are required. Keep domain code plain Dart: no Flutter, Firebase, platform storage, HTTP clients, or transport serialization.
 - Put use-case coordination in `application/`, adapters in `infrastructure/`, and pages/widgets in `presentation/`. Widgets call application services rather than platform adapters. Future cross-context collaboration must use explicit application facades, not another context's internals.
 - Keep bootstrap, deployment settings, app-wide layout, and theme in `lib/core/` and the app entrypoints. Keep `lib/shared/` business-neutral; do not move IAM rules there for convenience.
@@ -73,6 +73,8 @@ Use main for release history and develop for integration. Do not commit directly
 | hotfix/vX.Y.Z | main | main, then merge back into develop |
 
 Use lowercase kebab-case branch descriptions. Keep branches focused and delete topic branches after they are merged.
+
+For approved branch cleanup, verify that the pull request is closed and merged, the local/remote tip matches the integrated work, and the tip is an ancestor of the target branch. Delete only that completed topic branch locally and remotely; preserve `main`, `develop`, unmerged work, and any branch with a changed tip. Do not use blanket or forced deletion to bypass these checks.
 
 Never open a pull request from `develop` to `main`; releases always go through `release/vX.Y.Z`. Do not use other branch prefixes, such as `fix/`, `docs/`, `refactor/`, `chore/`, or `audit/`.
 
