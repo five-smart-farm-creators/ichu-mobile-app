@@ -24,6 +24,17 @@ abstract final class CattleMapping {
     return List<Cattle>.unmodifiable(cattle);
   }
 
+  /// Write responses return one animal; the repository checks it against the request.
+  static Cattle cattleFromPayload(
+    Object? payload, {
+    required String ranchId,
+    String? cattleId,
+  }) => _cattleFromPayload(
+    payload,
+    expectedRanchId: ranchId,
+    expectedCattleId: cattleId,
+  );
+
   static CattleProfile profileFromPayload(
     Object? payload, {
     required String ranchId,

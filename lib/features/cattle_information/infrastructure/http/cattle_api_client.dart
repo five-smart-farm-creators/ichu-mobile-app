@@ -7,10 +7,12 @@ import 'package:http/http.dart' as http;
 
 import '../../../iam/application/facades/authorized_ranch_session.dart';
 import '../../domain/model/cattle.dart';
+import '../../domain/model/cattle_commands.dart';
+import '../../domain/model/cattle_date.dart';
 import '../../domain/model/cattle_failure.dart';
 import '../../domain/model/cattle_search.dart';
 
-/// Sends only the ranch-scoped Cattle Information GET requests.
+/// Sends ranch-scoped Cattle Information requests; writes are never retried.
 final class CattleApiClient {
   CattleApiClient({
     required Uri baseUri,
@@ -52,7 +54,8 @@ final class CattleApiClient {
     final status = query.status;
     if (status != null) queryParameters['status'] = _statusName(status);
 
-    return _runGet(
+    return _run(
+      method: 'GET',
       context: context,
       path: 'ranches/$ranchId/cattle',
       queryParameters: queryParameters,
@@ -65,14 +68,109 @@ final class CattleApiClient {
       throw const CattleFailure(CattleFailureCode.notFound);
     }
     final context = _requireContext(ranchId);
-    return _runGet(context: context, path: 'ranches/$ranchId/cattle/$cattleId');
+    return _run(
+      method: 'GET',
+      context: context,
+      path: 'ranches/$ranchId/cattle/$cattleId',
+    );
   }
 
-  Future<Object?> _runGet({
+  Future<Object?> register(
+    String ranchId,
+    CattleRegistration registration,
+  ) async {
+    _validateRanchId(ranchId);
+    final context = _requireContext(ranchId);
+    return _run(
+      method: 'POST',
+      context: context,
+      path: 'ranches/$ranchId/cattle',
+      body: <String, Object?>{
+        'earTag': registration.normalizedEarTag,
+        'breed': _breedName(registration.breed),
+        'sex': _sexName(registration.sex),
+        'birthDate': _dateText(registration.birthDate),
+        'lifeStage': _stageName(registration.lifeStage),
+      },
+      expectedStatus: 201,
+    );
+  }
+
+  Future<Object?> correct(
+    String ranchId,
+    String cattleId,
+    String expectedVersion,
+    CattleCorrection correction,
+  ) async {
+    _validateRanchId(ranchId);
+    _validateWriteTarget(cattleId, expectedVersion);
+    final context = _requireContext(ranchId);
+    return _run(
+      method: 'PUT',
+      context: context,
+      path: 'ranches/$ranchId/cattle/$cattleId',
+      body: <String, Object?>{
+        'earTag': correction.normalizedEarTag,
+        'breed': _breedName(correction.breed),
+        'sex': _sexName(correction.sex),
+        'birthDate': _dateText(correction.birthDate),
+        'expectedVersion': expectedVersion,
+      },
+    );
+  }
+
+  Future<Object?> changeStage(
+    String ranchId,
+    String cattleId,
+    String expectedVersion,
+    CattleStageChange change,
+  ) async {
+    _validateRanchId(ranchId);
+    _validateWriteTarget(cattleId, expectedVersion);
+    final context = _requireContext(ranchId);
+    return _run(
+      method: 'PATCH',
+      context: context,
+      path: 'ranches/$ranchId/cattle/$cattleId/life-stage',
+      body: <String, Object?>{
+        'lifeStage': _stageName(change.stage),
+        'validFrom': _dateText(change.validFrom),
+        'expectedVersion': expectedVersion,
+      },
+    );
+  }
+
+  Future<Object?> deactivate(
+    String ranchId,
+    String cattleId,
+    String expectedVersion,
+    CattleExit exit,
+  ) async {
+    _validateRanchId(ranchId);
+    _validateWriteTarget(cattleId, expectedVersion);
+    final context = _requireContext(ranchId);
+    return _run(
+      method: 'POST',
+      context: context,
+      path: 'ranches/$ranchId/cattle/$cattleId/deactivations',
+      body: <String, Object?>{
+        'reason': _exitReasonName(exit.reason),
+        'exitDate': _dateText(exit.exitDate),
+        'expectedVersion': expectedVersion,
+      },
+    );
+  }
+
+  Future<Object?> _run({
     required AuthorizedRanchContext context,
+    required String method,
     required String path,
     Map<String, String>? queryParameters,
+    Map<String, Object?>? body,
+    int expectedStatus = 200,
   }) async {
+    // Writes are never retried because the API has no idempotency key.
+    final isWrite = method != 'GET';
     if (!_session.isConfigured) {
       throw const CattleFailure(CattleFailureCode.configuration);
     }
@@ -109,20 +207,27 @@ final class CattleApiClient {
     }
     _ensureCurrent(context);
 
-    final request = http.Request('GET', uri)
+    final request = http.Request(method, uri)
       ..followRedirects = false
       ..maxRedirects = 0
       ..headers['Authorization'] = 'Bearer $token'
       ..headers['Accept'] = 'application/json'
       ..headers['Accept-Language'] = language;
+    if (body != null) {
+      request
+        ..headers['Content-Type'] = 'application/json'
+        ..body = jsonEncode(body);
+    }
 
     // The session is rechecked immediately before handing the bearer request
     // to the HTTP client, and again after its entire response body is read.
     _ensureCurrent(context);
-    final response = await _sendAndRead(request);
+    final response = await _sendAndRead(request, isWrite: isWrite);
     _ensureCurrent(context);
-    if (response.statusCode != 200) {
-      throw _failureForStatus(response.statusCode);
+    if (response.statusCode != expectedStatus) {
+      throw isWrite
+          ? _failureForWrite(response)
+          : _failureForStatus(response.statusCode);
     }
     final bytes = response.body;
     if (bytes == null) {
@@ -153,8 +258,15 @@ final class CattleApiClient {
     }
   }
 
-  Future<_FetchedResponse> _sendAndRead(http.Request request) async {
+  Future<_FetchedResponse> _sendAndRead(
+    http.Request request, {
+    required bool isWrite,
+  }) async {
     final stopwatch = Stopwatch()..start();
+    // Once a write is handed to the client the server may already have applied it.
+    final transportFailure = isWrite
+        ? CattleFailureCode.outcomeUnknown
+        : CattleFailureCode.network;
     try {
       final streamed = await _client
           .send(request)
@@ -167,15 +279,17 @@ final class CattleApiClient {
       }
       return _FetchedResponse(statusCode: streamed.statusCode, body: body);
     } on TimeoutException {
-      throw const CattleFailure(CattleFailureCode.network);
+      throw CattleFailure(transportFailure);
     } on http.ClientException {
-      throw const CattleFailure(CattleFailureCode.network);
+      throw CattleFailure(transportFailure);
     } on IOException {
-      throw const CattleFailure(CattleFailureCode.network);
+      throw CattleFailure(transportFailure);
     } on CattleFailure {
       rethrow;
     } catch (_) {
-      throw const CattleFailure(CattleFailureCode.unknown);
+      throw CattleFailure(
+        isWrite ? CattleFailureCode.outcomeUnknown : CattleFailureCode.unknown,
+      );
     }
   }
 
@@ -211,6 +325,15 @@ final class CattleApiClient {
   void _validateRanchId(String value) {
     if (!_isNonzeroUuid(value)) {
       throw const CattleFailure(CattleFailureCode.contextUnavailable);
+    }
+  }
+
+  void _validateWriteTarget(String cattleId, String expectedVersion) {
+    if (!_isNonzeroUuid(cattleId)) {
+      throw const CattleFailure(CattleFailureCode.notFound);
+    }
+    if (!_isNonzeroUuid(expectedVersion)) {
+      throw const CattleFailure(CattleFailureCode.invalidInput);
     }
   }
 
@@ -270,6 +393,72 @@ final class CattleApiClient {
     CattleStatus.active => 'Active',
     CattleStatus.inactive => 'Inactive',
   };
+
+  CattleFailure _failureForWrite(_FetchedResponse response) {
+    final statusCode = response.statusCode;
+    if (statusCode >= 200 && statusCode <= 299) {
+      return const CattleFailure(CattleFailureCode.invalidResponse);
+    }
+    if (statusCode == 400) {
+      return const CattleFailure(CattleFailureCode.invalidInput);
+    }
+    if (statusCode == 409) {
+      return CattleFailure(_conflictCode(response.body));
+    }
+    return _failureForStatus(statusCode);
+  }
+
+  /// Only the stable codes listed here change the message; other conflicts mean the snapshot is stale.
+  CattleFailureCode _conflictCode(List<int>? body) {
+    if (body == null) return CattleFailureCode.versionConflict;
+    final Object? payload;
+    try {
+      payload = jsonDecode(utf8.decode(body));
+    } on FormatException {
+      return CattleFailureCode.versionConflict;
+    }
+    if (payload is! Map<String, dynamic>) {
+      return CattleFailureCode.versionConflict;
+    }
+    return switch (payload['code']) {
+      'CattleInformation.DuplicateEarTag' => CattleFailureCode.duplicateEarTag,
+      'CattleInformation.CattleInactive' => CattleFailureCode.inactive,
+      'CattleInformation.LifeStageAlreadyCurrent' =>
+        CattleFailureCode.stageAlreadyCurrent,
+      _ => CattleFailureCode.versionConflict,
+    };
+  }
+
+  String _breedName(CattleBreed value) => switch (value) {
+    CattleBreed.brownSwiss => 'BrownSwiss',
+    CattleBreed.fleckvieh => 'Fleckvieh',
+    CattleBreed.criollo => 'Criollo',
+    CattleBreed.crossbred => 'Crossbred',
+  };
+
+  String _sexName(CattleSex value) => switch (value) {
+    CattleSex.female => 'Female',
+    CattleSex.male => 'Male',
+  };
+
+  String _stageName(CattleStage value) => switch (value) {
+    CattleStage.calf => 'Calf',
+    CattleStage.heifer => 'Heifer',
+    CattleStage.milkingCow => 'MilkingCow',
+    CattleStage.fatteningBull => 'FatteningBull',
+  };
+
+  String _exitReasonName(CattleExitReason value) => switch (value) {
+    CattleExitReason.death => 'Death',
+    CattleExitReason.sale => 'Sale',
+    CattleExitReason.theft => 'Theft',
+    CattleExitReason.culling => 'Culling',
+  };
+
+  String _dateText(CattleDate value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
 
   bool _isNonzeroUuid(String value) =>
       _uuidPattern.hasMatch(value) &&
