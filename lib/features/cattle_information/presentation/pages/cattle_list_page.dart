@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import '../../../../core/layout/public_shell.dart';
 import '../../../../shared/application/services/language_service.dart';
 import '../../../../shared/infrastructure/i18n/generated/app_localizations.dart';
+import '../../application/services/cattle_management_service.dart';
 import '../../application/services/cattle_read_service.dart';
 import '../../domain/model/cattle.dart';
 import '../../domain/model/cattle_search.dart';
 import '../widgets/cattle_failure_notice.dart';
 import '../widgets/cattle_labels.dart';
+import 'cattle_details_form_page.dart';
 
 final class CattleListPage extends StatefulWidget {
   const CattleListPage({
@@ -19,6 +21,7 @@ final class CattleListPage extends StatefulWidget {
     required this.onBack,
     required this.onOpenRanches,
     required this.onOpenCattle,
+    this.management,
   });
 
   final LanguageService language;
@@ -26,6 +29,7 @@ final class CattleListPage extends StatefulWidget {
   final VoidCallback onBack;
   final VoidCallback onOpenRanches;
   final ValueChanged<String> onOpenCattle;
+  final CattleManagementService? management;
 
   @override
   State<CattleListPage> createState() => _CattleListPageState();
@@ -95,6 +99,25 @@ final class _CattleListPageState extends State<CattleListPage> {
     await widget.service.load(query: const CattleSearch());
   }
 
+  Future<void> _register(CattleManagementService management) async {
+    final strings = AppLocalizations.of(context);
+    final created = await Navigator.of(context).push<Cattle>(
+      MaterialPageRoute<Cattle>(
+        fullscreenDialog: true,
+        builder: (_) => CattleDetailsFormPage(management: management),
+      ),
+    );
+    if (!mounted) return;
+    final reload = created != null || management.requiresReload;
+    management.clearError();
+    if (created != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.cattleManageRegistered)));
+    }
+    if (reload) unawaited(widget.service.load());
+  }
+
   @override
   void dispose() {
     widget.service.removeListener(_onScopeChanged);
@@ -104,9 +127,13 @@ final class _CattleListPageState extends State<CattleListPage> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.service,
+    listenable: Listenable.merge(<Listenable>[
+      widget.service,
+      ?widget.management,
+    ]),
     builder: (context, _) {
       final service = widget.service;
+      final management = widget.management;
       final strings = AppLocalizations.of(context);
       final theme = Theme.of(context);
       final busy = service.status == CattleLoadStatus.loading;
@@ -142,6 +169,15 @@ final class _CattleListPageState extends State<CattleListPage> {
             ] else ...[
               Text(service.ranchName ?? '', style: theme.textTheme.titleLarge),
               const SizedBox(height: 16),
+              if (management != null && management.canManage) ...[
+                FilledButton.icon(
+                  key: const Key('cattle-manage-register'),
+                  onPressed: () => unawaited(_register(management)),
+                  icon: const Icon(Icons.add),
+                  label: Text(strings.cattleManageRegister),
+                ),
+                const SizedBox(height: 16),
+              ],
               Form(
                 key: _form,
                 child: Column(
