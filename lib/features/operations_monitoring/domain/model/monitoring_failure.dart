@@ -8,6 +8,7 @@ enum MonitoringFailureCode {
   serviceUnavailable,
   invalidResponse,
   invalidSearch,
+  invalidHistoryQuery,
   invalidAcknowledgement,
   unknown,
 }

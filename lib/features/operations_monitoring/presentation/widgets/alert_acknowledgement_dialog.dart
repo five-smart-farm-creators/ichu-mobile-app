@@ -195,6 +195,8 @@ String _failureText(
     strings.alertAcknowledgementErrorResponse,
   MonitoringFailureCode.invalidSearch =>
     strings.alertAcknowledgementErrorUnknown,
+  MonitoringFailureCode.invalidHistoryQuery =>
+    strings.alertAcknowledgementErrorUnknown,
   MonitoringFailureCode.invalidAcknowledgement =>
     strings.alertAcknowledgementErrorInvalid,
   MonitoringFailureCode.unknown => strings.alertAcknowledgementErrorUnknown,
