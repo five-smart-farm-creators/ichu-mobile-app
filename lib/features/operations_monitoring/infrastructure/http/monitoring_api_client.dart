@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../../../iam/application/facades/authorized_ranch_session.dart';
+import '../../domain/model/alert_search.dart';
+import '../../domain/model/ranch_alert.dart';
 import '../../domain/model/monitoring_failure.dart';
 
 /// Sends the authorized ranch-scoped Operations Monitoring read request.
@@ -41,6 +43,39 @@ final class MonitoringApiClient {
       throw const MonitoringFailure(MonitoringFailureCode.notFound);
     }
     final context = _requireContext(ranchId);
+    final path = 'ranches/$ranchId/cattle/$cattleId/telemetry/latest';
+    return _get(context, path);
+  }
+
+  Future<Object?> alerts(String ranchId, AlertSearch query) async {
+    _validateRanchId(ranchId);
+    if (!query.isValid) {
+      throw const MonitoringFailure(MonitoringFailureCode.invalidSearch);
+    }
+    final context = _requireContext(ranchId);
+    final queryParameters = <String, String>{
+      'page': query.page.toString(),
+      'pageSize': query.pageSize.toString(),
+      if (query.status != null)
+        'status': switch (query.status!) {
+          AlertStatus.pending => 'Pending',
+          AlertStatus.acknowledged => 'Acknowledged',
+        },
+    };
+    return _get(
+      context,
+      'ranches/$ranchId/alerts',
+      queryParameters: queryParameters,
+      isAlertList: true,
+    );
+  }
+
+  Future<Object?> _get(
+    AuthorizedRanchContext context,
+    String path, {
+    Map<String, String>? queryParameters,
+    bool isAlertList = false,
+  }) async {
     if (!_session.isConfigured) {
       throw const MonitoringFailure(MonitoringFailureCode.configuration);
     }
@@ -58,14 +93,16 @@ final class MonitoringApiClient {
       throw const MonitoringFailure(MonitoringFailureCode.unknown);
     }
 
-    final path = 'ranches/$ranchId/cattle/$cattleId/telemetry/latest';
     final Uri uri;
     try {
-      uri = _baseUri.replace(path: '${_baseUri.path}/$path');
+      uri = _baseUri.replace(
+        path: '${_baseUri.path}/$path',
+        queryParameters: queryParameters,
+      );
     } catch (_) {
       throw const MonitoringFailure(MonitoringFailureCode.unknown);
     }
-    if (!_isSameOriginUri(uri, path)) {
+    if (!_isSameOriginUri(uri, path, queryParameters)) {
       throw const MonitoringFailure(MonitoringFailureCode.unknown);
     }
 
@@ -86,7 +123,7 @@ final class MonitoringApiClient {
     final response = await _sendAndRead(request);
     _ensureCurrent(context);
     if (response.statusCode != 200) {
-      throw _failureForStatus(response.statusCode);
+      throw _failureForStatus(response.statusCode, isAlertList: isAlertList);
     }
     final bytes = response.body;
     if (bytes == null) {
@@ -204,16 +241,37 @@ final class MonitoringApiClient {
     }
   }
 
-  bool _isSameOriginUri(Uri uri, String path) =>
+  bool _isSameOriginUri(
+    Uri uri,
+    String path,
+    Map<String, String>? queryParameters,
+  ) =>
       uri.scheme == _baseUri.scheme &&
       uri.host == _baseUri.host &&
       uri.port == _baseUri.port &&
       uri.userInfo.isEmpty &&
       uri.path == '${_baseUri.path}/$path' &&
-      !uri.hasQuery &&
+      _hasExactQuery(uri, queryParameters) &&
       !uri.hasFragment;
 
-  MonitoringFailure _failureForStatus(int statusCode) => switch (statusCode) {
+  bool _hasExactQuery(Uri uri, Map<String, String>? expected) {
+    if (expected == null) return !uri.hasQuery;
+    final actual = uri.queryParameters;
+    if (actual.length != expected.length) return false;
+    for (final entry in expected.entries) {
+      if (actual[entry.key] != entry.value) return false;
+    }
+    return true;
+  }
+
+  MonitoringFailure _failureForStatus(
+    int statusCode, {
+    required bool isAlertList,
+  }) => switch (statusCode) {
+    400 when isAlertList => const MonitoringFailure(
+      MonitoringFailureCode.invalidSearch,
+    ),
+    400 => const MonitoringFailure(MonitoringFailureCode.unknown),
     401 => const MonitoringFailure(MonitoringFailureCode.unauthenticated),
     403 => const MonitoringFailure(MonitoringFailureCode.forbidden),
     404 => const MonitoringFailure(MonitoringFailureCode.notFound),
