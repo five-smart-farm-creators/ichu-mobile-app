@@ -12,6 +12,8 @@ import 'package:ichu_mobile_app/features/iam/domain/model/auth_user.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/iam/domain/repositories/authentication_repository.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_acknowledgement.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_acknowledgement_result.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_search.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
@@ -84,6 +86,269 @@ void main() {
           expect(request.headers['Accept-Language'], 'es-419');
           expect(request.headers.containsKey('Content-Type'), isFalse);
         }
+      },
+    );
+
+    test(
+      'sends a fixed versioned PATCH and preserves the operation on retry',
+      () async {
+        final requests = <http.Request>[];
+        final saved = _alert()
+          ..['status'] = 'Acknowledged'
+          ..['acknowledgedAt'] = '2026-11-13T10:00:00Z'
+          ..['acknowledgedBy'] = _authorId
+          ..['finding'] = 'Observed'
+          ..['action'] = 'Recorded for review'
+          ..['responseTimeSeconds'] = 86400
+          ..['version'] = 2;
+        final repository = _repository(
+          harness,
+          MockClient((request) async {
+            requests.add(request);
+            return http.Response(jsonEncode(saved), 200);
+          }),
+        );
+        const acknowledgement = AlertAcknowledgement(
+          alertId: _alertId,
+          operationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          finding: 'Observed',
+          action: 'Recorded for review',
+          expectedVersion: 1,
+        );
+
+        final first = await repository.acknowledge(_ranchA, acknowledgement);
+        final replay = await repository.acknowledge(_ranchA, acknowledgement);
+
+        expect(first.outcome, AlertAcknowledgementOutcome.acknowledged);
+        expect(first.currentAlert!.version, 2);
+        expect(replay.currentAlert!.status, AlertStatus.acknowledged);
+        expect(requests, hasLength(2));
+        expect(harness.identity.idTokenCalls, 2);
+        final bodies = <Map<String, Object?>>[];
+        for (final request in requests) {
+          expect(request.method, 'PATCH');
+          expect(request.url.path, '/api/v1/ranches/$_ranchA/alerts/$_alertId');
+          expect(request.url.query, isEmpty);
+          expect(request.followRedirects, isFalse);
+          expect(request.maxRedirects, 0);
+          expect(request.headers['Authorization'], 'Bearer synthetic-token');
+          expect(request.headers['Accept'], 'application/json');
+          expect(request.headers['Accept-Language'], 'es-419');
+          expect(request.headers['Content-Type'], 'application/json');
+          bodies.add(jsonDecode(request.body) as Map<String, Object?>);
+        }
+        expect(bodies[0], <String, Object?>{
+          'status': 'Acknowledged',
+          'finding': 'Observed',
+          'action': 'Recorded for review',
+          'operationId': acknowledgement.operationId,
+          'expectedVersion': 1,
+        });
+        expect(bodies[1], bodies[0]);
+        expect(bodies[0].containsKey('occurredAt'), isFalse);
+      },
+    );
+
+    test('omits a blank optional action from the PATCH contract', () async {
+      late http.Request request;
+      final saved = _alert()
+        ..['status'] = 'Acknowledged'
+        ..['acknowledgedAt'] = '2026-11-13T10:00:00Z'
+        ..['acknowledgedBy'] = _authorId
+        ..['finding'] = 'Observed'
+        ..['responseTimeSeconds'] = 60
+        ..['version'] = 2;
+      final repository = _repository(
+        harness,
+        MockClient((incoming) async {
+          request = incoming;
+          return http.Response(jsonEncode(saved), 200);
+        }),
+      );
+
+      await repository.acknowledge(
+        _ranchA,
+        const AlertAcknowledgement(
+          alertId: _alertId,
+          operationId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+          finding: 'Observed',
+          expectedVersion: 1,
+        ),
+      );
+
+      final body = jsonDecode(request.body) as Map<String, Object?>;
+      expect(body.containsKey('action'), isFalse);
+      expect(body.containsKey('occurredAt'), isFalse);
+    });
+
+    test(
+      'maps a version conflict and an unavailable stored alert body',
+      () async {
+        final current = _alert()
+          ..['status'] = 'Acknowledged'
+          ..['acknowledgedAt'] = '2026-11-13T10:00:00Z'
+          ..['acknowledgedBy'] = _authorId
+          ..['finding'] = 'Recorded elsewhere'
+          ..['responseTimeSeconds'] = 60
+          ..['version'] = 2;
+        final repository = _repository(
+          harness,
+          MockClient((_) async => http.Response(jsonEncode(current), 409)),
+        );
+        const acknowledgement = AlertAcknowledgement(
+          alertId: _alertId,
+          operationId: 'abababab-abab-4bab-8bab-abababababab',
+          finding: 'Observed',
+          expectedVersion: 1,
+        );
+
+        final conflict = await repository.acknowledge(_ranchA, acknowledgement);
+
+        expect(conflict.outcome, AlertAcknowledgementOutcome.conflict);
+        expect(conflict.currentAlert!.finding, 'Recorded elsewhere');
+        final noResource = _repository(
+          harness,
+          MockClient(
+            (_) async => http.Response('{"title":"version conflict"}', 409),
+          ),
+        );
+        final noBody = await noResource.acknowledge(_ranchA, acknowledgement);
+        expect(noBody.outcome, AlertAcknowledgementOutcome.conflict);
+        expect(noBody.currentAlert, isNull);
+      },
+    );
+
+    test('rejects an invalid successful acknowledgement resource', () async {
+      final valid = _alert()
+        ..['status'] = 'Acknowledged'
+        ..['acknowledgedAt'] = '2026-11-13T10:00:00Z'
+        ..['acknowledgedBy'] = _authorId
+        ..['finding'] = 'Observed'
+        ..['responseTimeSeconds'] = 60
+        ..['version'] = 2;
+      final invalidPayloads = [
+        Map<String, Object?>.of(valid)..['alertId'] = _alertId2,
+        Map<String, Object?>.of(valid)..['ranchId'] = _ranchB,
+        Map<String, Object?>.of(valid)..['status'] = 'Pending',
+      ];
+      for (final payload in invalidPayloads) {
+        final repository = _repository(
+          harness,
+          MockClient((_) async => http.Response(jsonEncode(payload), 200)),
+        );
+        await _expectFailure(
+          repository.acknowledge(
+            _ranchA,
+            const AlertAcknowledgement(
+              alertId: _alertId,
+              operationId: 'edededed-eded-4ded-8ded-edededededed',
+              finding: 'Observed',
+              expectedVersion: 1,
+            ),
+          ),
+          MonitoringFailureCode.invalidResponse,
+        );
+      }
+    });
+
+    test(
+      'does not send a PATCH with a token from a replaced ranch context',
+      () async {
+        final pendingToken = Completer<String>();
+        harness.authentication.tokenCompleter = pendingToken;
+        var requestCount = 0;
+        final repository = _repository(
+          harness,
+          MockClient((_) async {
+            requestCount++;
+            return http.Response('{}', 200);
+          }),
+        );
+        const acknowledgement = AlertAcknowledgement(
+          alertId: _alertId,
+          operationId: '12121212-1212-4212-8212-121212121212',
+          finding: 'Observed',
+          expectedVersion: 1,
+        );
+
+        final result = repository.acknowledge(_ranchA, acknowledgement);
+        await Future<void>.delayed(Duration.zero);
+        expect(harness.selection.select(_ranchB), isTrue);
+        pendingToken.complete('sensitive-token');
+
+        await _expectFailure(result, MonitoringFailureCode.contextUnavailable);
+        expect(requestCount, 0);
+      },
+    );
+
+    test(
+      'maps PATCH failures once and rejects invalid input before token access',
+      () async {
+        const acknowledgement = AlertAcknowledgement(
+          alertId: _alertId,
+          operationId: 'cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd',
+          finding: 'Observed',
+          expectedVersion: 1,
+        );
+        for (final (status, code) in <(int, MonitoringFailureCode)>[
+          (400, MonitoringFailureCode.invalidAcknowledgement),
+          (401, MonitoringFailureCode.unauthenticated),
+          (403, MonitoringFailureCode.forbidden),
+          (404, MonitoringFailureCode.notFound),
+          (429, MonitoringFailureCode.serviceUnavailable),
+          (503, MonitoringFailureCode.serviceUnavailable),
+          (302, MonitoringFailureCode.unknown),
+        ]) {
+          var requestCount = 0;
+          final repository = _repository(
+            harness,
+            MockClient((request) async {
+              requestCount++;
+              expect(request.method, 'PATCH');
+              expect(request.followRedirects, isFalse);
+              return http.Response(
+                '{"title":"private backend detail"}',
+                status,
+                headers: <String, String>{
+                  if (status == 302) 'location': 'https://evil.example/collect',
+                },
+              );
+            }),
+          );
+          await _expectFailure(
+            repository.acknowledge(_ranchA, acknowledgement),
+            code,
+          );
+          expect(requestCount, 1);
+        }
+
+        var requestCount = 0;
+        final repository = _repository(
+          harness,
+          MockClient((_) async {
+            requestCount++;
+            return http.Response('{}', 200);
+          }),
+        );
+        final tokensBefore = harness.identity.idTokenCalls;
+        await _expectFailure(
+          repository.acknowledge(
+            _ranchA,
+            const AlertAcknowledgement(
+              alertId: _alertId,
+              operationId: 'dededede-dede-4ede-8ede-dededededede',
+              finding: ' ',
+              expectedVersion: 1,
+            ),
+          ),
+          MonitoringFailureCode.invalidAcknowledgement,
+        );
+        await _expectFailure(
+          repository.acknowledge(_ranchB, acknowledgement),
+          MonitoringFailureCode.contextUnavailable,
+        );
+        expect(requestCount, 0);
+        expect(harness.identity.idTokenCalls, tokensBefore);
       },
     );
 

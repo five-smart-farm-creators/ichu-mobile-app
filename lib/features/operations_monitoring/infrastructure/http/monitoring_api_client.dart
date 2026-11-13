@@ -6,11 +6,12 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../../../iam/application/facades/authorized_ranch_session.dart';
+import '../../domain/model/alert_acknowledgement.dart';
 import '../../domain/model/alert_search.dart';
 import '../../domain/model/ranch_alert.dart';
 import '../../domain/model/monitoring_failure.dart';
 
-/// Sends the authorized ranch-scoped Operations Monitoring read request.
+/// Sends authorized ranch-scoped Operations Monitoring requests.
 final class MonitoringApiClient {
   MonitoringApiClient({
     required Uri baseUri,
@@ -70,11 +71,69 @@ final class MonitoringApiClient {
     );
   }
 
+  Future<({int statusCode, Object? payload})> acknowledgeAlert(
+    String ranchId,
+    AlertAcknowledgement acknowledgement,
+  ) async {
+    _validateRanchId(ranchId);
+    if (!_isNonzeroUuid(acknowledgement.alertId) ||
+        !_isNonzeroUuid(acknowledgement.operationId) ||
+        acknowledgement.expectedVersion < 1 ||
+        acknowledgement.expectedVersion > AlertSearch.maximumInt32 ||
+        acknowledgement.finding.trim().isEmpty ||
+        acknowledgement.finding.length > 400 ||
+        (acknowledgement.action?.length ?? 0) > 400) {
+      throw const MonitoringFailure(
+        MonitoringFailureCode.invalidAcknowledgement,
+      );
+    }
+    final context = _requireContext(ranchId);
+    final response = await _requestJson(
+      context,
+      'PATCH',
+      'ranches/$ranchId/alerts/${acknowledgement.alertId}',
+      body: <String, Object?>{
+        'status': 'Acknowledged',
+        'finding': acknowledgement.finding,
+        if (acknowledgement.action != null) 'action': acknowledgement.action,
+        'operationId': acknowledgement.operationId,
+        'expectedVersion': acknowledgement.expectedVersion,
+      },
+    );
+    if (response.statusCode == 200 || response.statusCode == 409) {
+      return response;
+    }
+    throw _failureForStatus(response.statusCode, isAcknowledgement: true);
+  }
+
   Future<Object?> _get(
     AuthorizedRanchContext context,
     String path, {
     Map<String, String>? queryParameters,
     bool isAlertList = false,
+  }) async {
+    final response = await _requestJson(
+      context,
+      'GET',
+      path,
+      queryParameters: queryParameters,
+    );
+    if (response.statusCode != 200) {
+      throw _failureForStatus(response.statusCode, isAlertList: isAlertList);
+    }
+    final payload = response.payload;
+    if (payload == null) {
+      throw const MonitoringFailure(MonitoringFailureCode.invalidResponse);
+    }
+    return payload;
+  }
+
+  Future<({int statusCode, Object? payload})> _requestJson(
+    AuthorizedRanchContext context,
+    String method,
+    String path, {
+    Map<String, String>? queryParameters,
+    Map<String, Object?>? body,
   }) async {
     if (!_session.isConfigured) {
       throw const MonitoringFailure(MonitoringFailureCode.configuration);
@@ -112,26 +171,40 @@ final class MonitoringApiClient {
     }
     _ensureCurrent(context);
 
-    final request = http.Request('GET', uri)
+    final request = http.Request(method, uri)
       ..followRedirects = false
       ..maxRedirects = 0
       ..headers['Authorization'] = 'Bearer $token'
       ..headers['Accept'] = 'application/json'
       ..headers['Accept-Language'] = language;
+    if (body != null) {
+      request
+        ..headers['Content-Type'] = 'application/json'
+        ..body = jsonEncode(body);
+    }
 
     _ensureCurrent(context);
     final response = await _sendAndRead(request);
     _ensureCurrent(context);
-    if (response.statusCode != 200) {
-      throw _failureForStatus(response.statusCode, isAlertList: isAlertList);
-    }
     final bytes = response.body;
+    if (response.statusCode != 200 && response.statusCode != 409) {
+      return (statusCode: response.statusCode, payload: null);
+    }
     if (bytes == null) {
+      if (response.statusCode == 409) {
+        return (statusCode: response.statusCode, payload: null);
+      }
       throw const MonitoringFailure(MonitoringFailureCode.invalidResponse);
     }
     try {
-      return jsonDecode(utf8.decode(bytes));
+      return (
+        statusCode: response.statusCode,
+        payload: jsonDecode(utf8.decode(bytes)),
+      );
     } on FormatException {
+      if (response.statusCode == 409) {
+        return (statusCode: response.statusCode, payload: null);
+      }
       throw const MonitoringFailure(MonitoringFailureCode.invalidResponse);
     }
   }
@@ -266,10 +339,14 @@ final class MonitoringApiClient {
 
   MonitoringFailure _failureForStatus(
     int statusCode, {
-    required bool isAlertList,
+    bool isAlertList = false,
+    bool isAcknowledgement = false,
   }) => switch (statusCode) {
     400 when isAlertList => const MonitoringFailure(
       MonitoringFailureCode.invalidSearch,
+    ),
+    400 when isAcknowledgement => const MonitoringFailure(
+      MonitoringFailureCode.invalidAcknowledgement,
     ),
     400 => const MonitoringFailure(MonitoringFailureCode.unknown),
     401 => const MonitoringFailure(MonitoringFailureCode.unauthenticated),

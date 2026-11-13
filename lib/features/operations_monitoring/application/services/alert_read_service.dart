@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../iam/application/facades/authorized_ranch_session.dart';
+import '../../domain/model/alert_acknowledgement.dart';
+import '../../domain/model/alert_acknowledgement_result.dart';
 import '../../domain/model/alert_search.dart';
 import '../../domain/model/monitoring_failure.dart';
 import '../../domain/model/ranch_alert.dart';
@@ -27,13 +29,21 @@ final class AlertReadService extends ChangeNotifier {
   Future<bool>? _pending;
   AlertSearch? _pendingQuery;
   int _generation = 0;
+  int _acknowledgementGeneration = 0;
   int _revision = 0;
+  bool _acknowledgementPending = false;
+  AlertAcknowledgement? _pendingAcknowledgementRequest;
+  Future<AlertAcknowledgementResult>? _pendingAcknowledgement;
   bool _disposed = false;
 
   AlertLoadStatus get status => _visible ? _status : AlertLoadStatus.idle;
   bool get hasContext => !_disposed && _access.context != null;
   bool get canLoad =>
-      hasContext && _alerts.isConfigured && status != AlertLoadStatus.loading;
+      hasContext &&
+      _alerts.isConfigured &&
+      status != AlertLoadStatus.loading &&
+      !isAcknowledging;
+  bool get isAcknowledging => _visible && _acknowledgementPending;
   String? get ranchName => _visible ? _requestContext?.ranchName : null;
   AlertSearch get query => _visible ? _query : const AlertSearch();
   List<RanchAlert> get alerts => _visible && _status == AlertLoadStatus.ready
@@ -61,6 +71,7 @@ final class AlertReadService extends ChangeNotifier {
   /// Loads the selected page explicitly; no read starts during construction.
   Future<bool> load({AlertSearch? query}) {
     if (_disposed) return Future<bool>.value(false);
+    if (_acknowledgementPending) return Future<bool>.value(false);
     final requested = query ?? _query;
     final context = _access.context;
     if (context == null) {
@@ -110,6 +121,211 @@ final class AlertReadService extends ChangeNotifier {
   Future<bool> previousPage() => canGoPrevious
       ? load(query: _query.atPage(_query.page - 1))
       : Future<bool>.value(false);
+
+  /// Records one cloud acknowledgement without turning it into resolution or an Edge sync.
+  Future<AlertAcknowledgementResult> acknowledge(
+    RanchAlert alert,
+    AlertAcknowledgement request,
+  ) {
+    if (_acknowledgementPending) {
+      if (_sameAcknowledgement(_pendingAcknowledgementRequest, request)) {
+        return _pendingAcknowledgement!;
+      }
+      return Future<AlertAcknowledgementResult>.error(
+        const MonitoringFailure(MonitoringFailureCode.invalidAcknowledgement),
+      );
+    }
+    final context = _access.context;
+    if (_disposed || context == null || !_visible) {
+      return Future<AlertAcknowledgementResult>.error(
+        const MonitoringFailure(MonitoringFailureCode.contextUnavailable),
+      );
+    }
+    if (!_alerts.isConfigured) {
+      return Future<AlertAcknowledgementResult>.error(
+        const MonitoringFailure(MonitoringFailureCode.configuration),
+      );
+    }
+    final currentAlert = _items.where(
+      (item) => _sameUuid(item.alertId, alert.alertId),
+    );
+    if (_status != AlertLoadStatus.ready) {
+      return Future<AlertAcknowledgementResult>.error(
+        const MonitoringFailure(MonitoringFailureCode.invalidAcknowledgement),
+      );
+    }
+    if (alert.status != AlertStatus.pending ||
+        !_sameUuid(alert.ranchId, context.ranchId) ||
+        !_sameUuid(alert.alertId, request.alertId) ||
+        request.expectedVersion != alert.version ||
+        currentAlert.length != 1 ||
+        currentAlert.single.status != AlertStatus.pending ||
+        currentAlert.single.version != alert.version ||
+        !_validAcknowledgement(request)) {
+      return Future<AlertAcknowledgementResult>.error(
+        const MonitoringFailure(MonitoringFailureCode.invalidAcknowledgement),
+      );
+    }
+
+    final generation = ++_acknowledgementGeneration;
+    _acknowledgementPending = true;
+    _pendingAcknowledgementRequest = request;
+    final future = Future<AlertAcknowledgementResult>.microtask(
+      () => _performAcknowledgement(context, alert, request, generation),
+    );
+    _pendingAcknowledgement = future;
+    notifyListeners();
+    return future;
+  }
+
+  Future<AlertAcknowledgementResult> _performAcknowledgement(
+    AuthorizedRanchContext context,
+    RanchAlert alert,
+    AlertAcknowledgement request,
+    int generation,
+  ) async {
+    try {
+      if (!_isCurrentAcknowledgement(context, generation)) {
+        throw const MonitoringFailure(MonitoringFailureCode.contextUnavailable);
+      }
+      final result = await _alerts.acknowledge(context.ranchId, request);
+      if (!_isCurrentAcknowledgement(context, generation)) {
+        throw const MonitoringFailure(MonitoringFailureCode.contextUnavailable);
+      }
+      final currentAlert = result.currentAlert;
+      if (result.outcome == AlertAcknowledgementOutcome.acknowledged) {
+        if (currentAlert == null ||
+            !_isValidAcknowledgedAlert(
+              currentAlert,
+              context,
+              request,
+              alert.version,
+            )) {
+          throw const MonitoringFailure(MonitoringFailureCode.invalidResponse);
+        }
+        if (_query.status == AlertStatus.pending ||
+            !_replaceAcknowledgedAlert(alert, currentAlert)) {
+          await _reloadCurrentPage(context);
+        }
+        _error = null;
+        notifyListeners();
+        return result;
+      }
+
+      if (currentAlert != null &&
+          (!_sameUuid(currentAlert.alertId, alert.alertId) ||
+              !_sameUuid(currentAlert.ranchId, context.ranchId))) {
+        throw const MonitoringFailure(MonitoringFailureCode.invalidResponse);
+      }
+      await _reloadCurrentPage(context);
+      if (!_isCurrentAcknowledgement(context, generation)) {
+        throw const MonitoringFailure(MonitoringFailureCode.contextUnavailable);
+      }
+      return result;
+    } on MonitoringFailure {
+      rethrow;
+    } catch (_) {
+      throw const MonitoringFailure(MonitoringFailureCode.unknown);
+    } finally {
+      if (generation == _acknowledgementGeneration) {
+        _acknowledgementPending = false;
+        _pendingAcknowledgementRequest = null;
+        _pendingAcknowledgement = null;
+        notifyListeners();
+      }
+    }
+  }
+
+  bool _isCurrentAcknowledgement(
+    AuthorizedRanchContext context,
+    int generation,
+  ) =>
+      !_disposed &&
+      generation == _acknowledgementGeneration &&
+      _access.isCurrent(context) &&
+      identical(_access.context, context);
+
+  bool _isValidAcknowledgedAlert(
+    RanchAlert currentAlert,
+    AuthorizedRanchContext context,
+    AlertAcknowledgement request,
+    int previousVersion,
+  ) =>
+      _sameUuid(currentAlert.alertId, request.alertId) &&
+      _sameUuid(currentAlert.ranchId, context.ranchId) &&
+      currentAlert.status == AlertStatus.acknowledged &&
+      currentAlert.version > previousVersion &&
+      currentAlert.acknowledgedAt != null &&
+      currentAlert.acknowledgedBy != null &&
+      currentAlert.finding != null;
+
+  Future<void> _reloadCurrentPage(AuthorizedRanchContext context) async {
+    final query = _query;
+    final generation = ++_generation;
+    _requestContext = context;
+    _clearPage();
+    _error = null;
+    _status = AlertLoadStatus.loading;
+    _pending = null;
+    _pendingQuery = null;
+    notifyListeners();
+    await _performLoad(context, query, generation);
+  }
+
+  bool _replaceAcknowledgedAlert(RanchAlert previous, RanchAlert updated) {
+    final index = _items.indexWhere(
+      (item) => _sameUuid(item.alertId, previous.alertId),
+    );
+    if (index < 0) {
+      return false;
+    }
+    final items = List<RanchAlert>.of(_items);
+    if (_query.status == AlertStatus.pending) {
+      items.removeAt(index);
+      if (_totalCount != null && _totalCount! > 0) {
+        _totalCount = _totalCount! - 1;
+      }
+    } else {
+      items[index] = updated;
+    }
+    _items = List<RanchAlert>.unmodifiable(items);
+    return true;
+  }
+
+  bool _validAcknowledgement(AlertAcknowledgement request) {
+    final finding = request.finding.trim();
+    final action = request.action;
+    return _uuidPattern.hasMatch(request.operationId) &&
+        request.operationId
+            .replaceAll('-', '')
+            .replaceAll('0', '')
+            .isNotEmpty &&
+        request.expectedVersion > 0 &&
+        request.expectedVersion <= AlertSearch.maximumInt32 &&
+        finding.isNotEmpty &&
+        request.finding.length <= 400 &&
+        (action == null || action.length <= 400);
+  }
+
+  bool _sameAcknowledgement(
+    AlertAcknowledgement? left,
+    AlertAcknowledgement right,
+  ) =>
+      left != null &&
+      left.alertId == right.alertId &&
+      left.operationId == right.operationId &&
+      left.finding == right.finding &&
+      left.action == right.action &&
+      left.expectedVersion == right.expectedVersion;
+
+  bool _sameUuid(String left, String right) =>
+      _uuidPattern.hasMatch(left) &&
+      _uuidPattern.hasMatch(right) &&
+      left.toLowerCase() == right.toLowerCase();
+
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
 
   Future<bool> _performLoad(
     AuthorizedRanchContext context,
@@ -230,6 +446,7 @@ final class AlertReadService extends ChangeNotifier {
   void clear() {
     if (_disposed) return;
     ++_generation;
+    ++_acknowledgementGeneration;
     _requestContext = null;
     _query = const AlertSearch();
     _clearPage();
@@ -246,6 +463,10 @@ final class AlertReadService extends ChangeNotifier {
     if (identical(next, _observedContext)) return;
     _observedContext = next;
     ++_generation;
+    ++_acknowledgementGeneration;
+    _acknowledgementPending = false;
+    _pendingAcknowledgementRequest = null;
+    _pendingAcknowledgement = null;
     _requestContext = null;
     _query = const AlertSearch();
     _clearPage();
@@ -253,6 +474,9 @@ final class AlertReadService extends ChangeNotifier {
     _status = AlertLoadStatus.idle;
     _pending = null;
     _pendingQuery = null;
+    _acknowledgementPending = false;
+    _pendingAcknowledgementRequest = null;
+    _pendingAcknowledgement = null;
     _revision++;
     notifyListeners();
   }
@@ -262,12 +486,16 @@ final class AlertReadService extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     ++_generation;
+    ++_acknowledgementGeneration;
     _access.removeListener(_onAccessChanged);
     _requestContext = null;
     _clearPage();
     _error = null;
     _pending = null;
     _pendingQuery = null;
+    _acknowledgementPending = false;
+    _pendingAcknowledgementRequest = null;
+    _pendingAcknowledgement = null;
     super.dispose();
   }
 }

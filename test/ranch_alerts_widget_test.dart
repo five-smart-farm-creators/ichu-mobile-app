@@ -10,6 +10,7 @@ import 'package:ichu_mobile_app/features/iam/application/services/authentication
 import 'package:ichu_mobile_app/features/iam/application/services/ranch_selection_service.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/alert_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_acknowledgement_result.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_search.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
@@ -168,6 +169,228 @@ void main() {
     });
   });
 
+  testWidgets('pending alert acknowledgement is explicit and cloud-only', (
+    tester,
+  ) async {
+    await _withFixture(tester, (fixture) async {
+      const alertId = 'a8888888-8888-4888-8888-000000000001';
+      fixture.alerts.pageResult = _page(
+        _ranchA,
+        page: 1,
+        total: 1,
+        items: [_alert(_ranchA, alertId)],
+      );
+      await tester.pumpWidget(_app(fixture));
+      await tester.pumpAndSettle();
+      final strings = _strings(tester);
+      final acknowledge = find.byKey(Key('alert-acknowledge-$alertId'));
+      expect(acknowledge, findsOneWidget);
+      await _tap(tester, acknowledge);
+      expect(
+        find.text(strings.alertAcknowledgementDialogTitle),
+        findsOneWidget,
+      );
+      expect(find.text(strings.alertAcknowledgementNotice), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('alert-acknowledgement-finding')),
+        'Cloud observation',
+      );
+      await tester.enterText(
+        find.byKey(const Key('alert-acknowledgement-action')),
+        'Recorded for review',
+      );
+      fixture.alerts.acknowledgementResult =
+          AlertAcknowledgementResult.acknowledged(
+            _alert(
+              _ranchA,
+              alertId,
+              status: AlertStatus.acknowledged,
+              finding: 'Cloud observation',
+              action: 'Recorded for review',
+            ),
+          );
+      await _tap(tester, find.byKey(const Key('alert-acknowledgement-submit')));
+
+      expect(fixture.alerts.acknowledgements, hasLength(1));
+      final request = fixture.alerts.acknowledgements.single.request;
+      expect(request.alertId, alertId);
+      expect(request.finding, 'Cloud observation');
+      expect(request.action, 'Recorded for review');
+      expect(request.expectedVersion, 1);
+      expect(request.operationId, matches(RegExp(r'^[0-9a-f-]{36}$')));
+      expect(find.byKey(Key('alert-acknowledge-$alertId')), findsNothing);
+      expect(find.text(strings.alertAcknowledgementSaved), findsOneWidget);
+      expect(find.text(strings.alertReadOnlyNote), findsNothing);
+    }, language: AppLanguage.spanish);
+  });
+
+  testWidgets('acknowledgement validates required finding before sending', (
+    tester,
+  ) async {
+    await _withFixture(tester, (fixture) async {
+      const alertId = 'a8888888-8888-4888-8888-000000000001';
+      fixture.alerts.pageResult = _page(
+        _ranchA,
+        page: 1,
+        total: 1,
+        items: [_alert(_ranchA, alertId)],
+      );
+      await tester.pumpWidget(_app(fixture));
+      await tester.pumpAndSettle();
+      await _tap(tester, find.byKey(Key('alert-acknowledge-$alertId')));
+      await _tap(tester, find.byKey(const Key('alert-acknowledgement-submit')));
+
+      expect(find.text(_strings(tester).alertFindingRequired), findsOneWidget);
+      expect(fixture.alerts.acknowledgements, isEmpty);
+    });
+  });
+
+  testWidgets(
+    'backend permission failure is shown without changing the alert',
+    (tester) async {
+      await _withFixture(tester, (fixture) async {
+        const alertId = 'a8888888-8888-4888-8888-000000000001';
+        fixture.alerts.pageResult = _page(
+          _ranchA,
+          page: 1,
+          total: 1,
+          items: [_alert(_ranchA, alertId)],
+        );
+        fixture.alerts.acknowledgementFailure = const MonitoringFailure(
+          MonitoringFailureCode.forbidden,
+        );
+        await tester.pumpWidget(_app(fixture));
+        await tester.pumpAndSettle();
+        await _tap(tester, find.byKey(Key('alert-acknowledge-$alertId')));
+        await tester.enterText(
+          find.byKey(const Key('alert-acknowledgement-finding')),
+          'Observed remotely',
+        );
+        await _tap(
+          tester,
+          find.byKey(const Key('alert-acknowledgement-submit')),
+        );
+
+        expect(
+          find.text(_strings(tester).alertAcknowledgementErrorForbidden),
+          findsOneWidget,
+        );
+        expect(fixture.alerts.acknowledgements, hasLength(1));
+        expect(fixture.service.alerts.single.status, AlertStatus.pending);
+        expect(
+          find.text(_strings(tester).alertAcknowledgementSaved),
+          findsNothing,
+        );
+      });
+    },
+  );
+
+  testWidgets('uncertain acknowledgement retry reuses identical request data', (
+    tester,
+  ) async {
+    await _withFixture(tester, (fixture) async {
+      const alertId = 'a8888888-8888-4888-8888-000000000001';
+      fixture.alerts.pageResult = _page(
+        _ranchA,
+        page: 1,
+        total: 1,
+        items: [_alert(_ranchA, alertId)],
+      );
+      fixture.alerts.acknowledgementFailure = const MonitoringFailure(
+        MonitoringFailureCode.network,
+      );
+      await tester.pumpWidget(_app(fixture));
+      await tester.pumpAndSettle();
+      await _tap(tester, find.byKey(Key('alert-acknowledge-$alertId')));
+      await tester.enterText(
+        find.byKey(const Key('alert-acknowledgement-finding')),
+        'Observed remotely',
+      );
+      await tester.enterText(
+        find.byKey(const Key('alert-acknowledgement-action')),
+        'Shared with the ranch team',
+      );
+      await _tap(tester, find.byKey(const Key('alert-acknowledgement-submit')));
+      final firstRequest = fixture.alerts.acknowledgements.single.request;
+      expect(
+        find.text(_strings(tester).alertAcknowledgementRetryNote),
+        findsOneWidget,
+      );
+      fixture.alerts.acknowledgementFailure = null;
+      fixture.alerts.acknowledgementResult =
+          AlertAcknowledgementResult.acknowledged(
+            _alert(
+              _ranchA,
+              alertId,
+              status: AlertStatus.acknowledged,
+              finding: 'Observed remotely',
+              action: 'Shared with the ranch team',
+            ),
+          );
+      await _tap(tester, find.byKey(const Key('alert-acknowledgement-submit')));
+
+      expect(fixture.alerts.acknowledgements, hasLength(2));
+      final retried = fixture.alerts.acknowledgements.last.request;
+      expect(retried.operationId, firstRequest.operationId);
+      expect(retried.alertId, firstRequest.alertId);
+      expect(retried.finding, firstRequest.finding);
+      expect(retried.action, firstRequest.action);
+      expect(retried.expectedVersion, firstRequest.expectedVersion);
+      expect(
+        find.text(_strings(tester).alertAcknowledgementSaved),
+        findsOneWidget,
+      );
+    });
+  });
+
+  testWidgets('version conflict reloads cloud state without a write retry', (
+    tester,
+  ) async {
+    await _withFixture(tester, (fixture) async {
+      const alertId = 'a8888888-8888-4888-8888-000000000001';
+      fixture.alerts.pageResult = _page(
+        _ranchA,
+        page: 1,
+        total: 1,
+        items: [_alert(_ranchA, alertId)],
+      );
+      await tester.pumpWidget(_app(fixture));
+      await tester.pumpAndSettle();
+      await _tap(tester, find.byKey(Key('alert-acknowledge-$alertId')));
+      await tester.enterText(
+        find.byKey(const Key('alert-acknowledgement-finding')),
+        'Observed remotely',
+      );
+      fixture.alerts.acknowledgementResult =
+          AlertAcknowledgementResult.conflict(
+            currentAlert: _alert(
+              _ranchA,
+              alertId,
+              status: AlertStatus.acknowledged,
+            ),
+          );
+      fixture.alerts.pageResult = _page(
+        _ranchA,
+        page: 1,
+        total: 1,
+        items: [_alert(_ranchA, alertId, status: AlertStatus.acknowledged)],
+      );
+      await _tap(tester, find.byKey(const Key('alert-acknowledgement-submit')));
+
+      expect(fixture.alerts.acknowledgements, hasLength(1));
+      expect(fixture.alerts.requests, hasLength(2));
+      expect(
+        find.text(_strings(tester).alertAcknowledgementConflict),
+        findsOneWidget,
+      );
+      expect(find.byKey(Key('alert-acknowledge-$alertId')), findsNothing);
+      expect(
+        find.textContaining(_strings(tester).alertAcknowledged),
+        findsWidgets,
+      );
+    });
+  });
+
   testWidgets('server total controls short-page navigation and rows replace', (
     tester,
   ) async {
@@ -305,7 +528,7 @@ void main() {
     },
   );
 
-  testWidgets('all three alert types and persisted details are read-only', (
+  testWidgets('all alert types and saved event details remain cloud snapshots', (
     tester,
   ) async {
     await _withFixture(tester, (fixture) async {
@@ -379,7 +602,7 @@ void main() {
       final initialCalls = fixture.alerts.calls;
       await _tap(tester, find.byKey(const Key('alert-details-temp')));
       expect(fixture.alerts.calls, initialCalls);
-      expect(find.text(strings.alertReadOnlyNote), findsOneWidget);
+      expect(find.text(strings.alertEventSnapshotNote), findsOneWidget);
       expect(find.text(strings.alertWorkflowNote), findsOneWidget);
       expect(find.text('Captured plain-text finding'), findsOneWidget);
       expect(find.text('Recorded fixture action'), findsOneWidget);
@@ -670,6 +893,43 @@ void main() {
       tester.view.resetViewInsets();
     }
   });
+
+  testWidgets(
+    'acknowledgement dialog scrolls at large text on a narrow viewport',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+      try {
+        await _withFixture(tester, (fixture) async {
+          const alertId = 'a8888888-8888-4888-8888-000000000001';
+          fixture.alerts.pageResult = _page(
+            _ranchA,
+            page: 1,
+            total: 1,
+            items: [_alert(_ranchA, alertId)],
+          );
+          await tester.pumpWidget(_app(fixture));
+          await tester.pumpAndSettle();
+          await _tap(tester, find.byKey(Key('alert-acknowledge-$alertId')));
+          expect(tester.takeException(), isNull);
+          final submit = find.byKey(const Key('alert-acknowledgement-submit'));
+          await tester.ensureVisible(submit);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(tester.getSize(submit).height, greaterThanOrEqualTo(48));
+          await _tap(
+            tester,
+            find.byKey(const Key('alert-acknowledgement-cancel')),
+          );
+        }, language: AppLanguage.spanish);
+      } finally {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+        tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+      }
+    },
+  );
 
   for (final language in AppLanguage.values) {
     for (final platform in const <TargetPlatform>[

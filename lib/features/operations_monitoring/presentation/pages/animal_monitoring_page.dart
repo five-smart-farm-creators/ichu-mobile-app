@@ -348,5 +348,7 @@ String _failureText(AppLocalizations strings, MonitoringFailureCode code) =>
         strings.monitoringErrorUnavailable,
       MonitoringFailureCode.invalidResponse => strings.monitoringErrorResponse,
       MonitoringFailureCode.invalidSearch => strings.monitoringErrorUnknown,
+      MonitoringFailureCode.invalidAcknowledgement =>
+        strings.monitoringErrorUnknown,
       MonitoringFailureCode.unknown => strings.monitoringErrorUnknown,
     };

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Version-checked, idempotent cloud-only alert acknowledgements with server timestamps, safe same-operation retries, conflict refresh, and explicit limits against implying clinical attendance, resolution, or Edge synchronization.
 - Immutable ranch alert contracts and real page envelopes with known workflow/type/severity metadata, captured/cloud-received times, stored acknowledgement fields, and server-bounded pagination/filter validation.
 - A constrained alert-list GET sharing the existing Operations Monitoring transport, with tenant/resource mapping, canonical status queries, safe errors, fresh IAM-facade tokens, and preserved timeout/redirect/replay safeguards.
 - Context-bound alert page coordination with replacement pagination, real server totals, explicit retry, deduplicated pending intent, and isolation across query/ranch/session changes and late responses.
