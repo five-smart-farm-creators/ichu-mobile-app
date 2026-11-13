@@ -18,6 +18,7 @@ final class SessionAccountPage extends StatelessWidget {
     required this.onOpenTerms,
     required this.onOpenProfile,
     required this.onOpenRanches,
+    required this.onOpenAdvisories,
     this.onOpenAnimals,
     this.onOpenAlerts,
   });
@@ -28,6 +29,7 @@ final class SessionAccountPage extends StatelessWidget {
   final VoidCallback onOpenTerms;
   final VoidCallback onOpenProfile;
   final VoidCallback onOpenRanches;
+  final VoidCallback onOpenAdvisories;
   final VoidCallback? onOpenAnimals;
   final VoidCallback? onOpenAlerts;
 
@@ -134,6 +136,15 @@ final class SessionAccountPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            if (account.role != AccountRole.fieldOperator) ...[
+              OutlinedButton.icon(
+                key: const Key('account-advisories'),
+                onPressed: onOpenAdvisories,
+                icon: const Icon(Icons.medical_services_outlined),
+                label: Text(strings.iamAdvisoryTitle),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (onOpenAnimals != null) ...[
               OutlinedButton.icon(
                 key: const Key('account-animals'),

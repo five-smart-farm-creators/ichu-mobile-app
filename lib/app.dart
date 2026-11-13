@@ -13,12 +13,15 @@ import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/registration_service.dart';
 import 'features/iam/application/services/professional_profile_service.dart';
 import 'features/iam/application/services/ranch_selection_service.dart';
+import 'features/iam/application/services/herd_advisory_service.dart';
+import 'features/iam/domain/model/iam_account.dart';
 import 'features/iam/presentation/pages/login_page.dart';
 import 'features/iam/presentation/pages/recovery_page.dart';
 import 'features/iam/presentation/pages/registration_page.dart';
 import 'features/iam/presentation/pages/professional_profile_page.dart';
 import 'features/iam/presentation/pages/ranch_selection_page.dart';
 import 'features/iam/presentation/pages/session_account_page.dart';
+import 'features/iam/presentation/pages/herd_advisory_page.dart';
 import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'features/operations_monitoring/application/services/alert_read_service.dart';
 import 'features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
@@ -36,6 +39,7 @@ final class IchuApp extends StatefulWidget {
     required this.profileService,
     required this.ranchSelection,
     required this.cattleService,
+    required this.herdAdvisoryService,
     required this.monitoringService,
     required this.alertService,
     this.initialRoute = '/',
@@ -48,6 +52,7 @@ final class IchuApp extends StatefulWidget {
   final ProfessionalProfileService profileService;
   final RanchSelectionService ranchSelection;
   final CattleReadService cattleService;
+  final HerdAdvisoryService herdAdvisoryService;
   final MonitoringReadService monitoringService;
   final AlertReadService alertService;
   final String initialRoute;
@@ -74,6 +79,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
     if (oldWidget.authentication != widget.authentication ||
         oldWidget.ranchSelection != widget.ranchSelection ||
         oldWidget.cattleService != widget.cattleService ||
+        oldWidget.herdAdvisoryService != widget.herdAdvisoryService ||
         oldWidget.monitoringService != widget.monitoringService ||
         oldWidget.alertService != widget.alertService) {
       _router.dispose();
@@ -118,6 +124,11 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
       }
       if (signedIn &&
           (path == '/login' || path == '/recover' || path == '/register')) {
+        return '/account';
+      }
+      if (signedIn &&
+          path == '/account/advisories' &&
+          widget.authentication.account?.role == AccountRole.fieldOperator) {
         return '/account';
       }
       if (signedIn &&
@@ -192,8 +203,18 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           onOpenRanches: () => _router.push('/account/ranches'),
           onOpenAnimals: () => _router.push('/account/animals'),
           onOpenAlerts: () => _router.push('/account/alerts'),
+          onOpenAdvisories: () => _router.push('/account/advisories'),
         ),
         routes: [
+          GoRoute(
+            path: 'advisories',
+            builder: (context, state) => HerdAdvisoryPage(
+              language: widget.language,
+              service: widget.herdAdvisoryService,
+              selection: widget.ranchSelection,
+              onBack: () => _router.go('/account'),
+            ),
+          ),
           GoRoute(
             path: 'alerts',
             builder: (context, state) => RanchAlertsPage(

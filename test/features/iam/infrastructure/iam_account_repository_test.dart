@@ -49,6 +49,36 @@ void main() {
       },
     );
 
+    test(
+      'encodes advisory lookup codes only in the configured API query',
+      () async {
+        final auth = _FakeAuthenticationRepository(user: _identity('uid-1'));
+        final requests = <http.Request>[];
+        final api = _api(
+          auth,
+          MockClient((request) async {
+            requests.add(request);
+            return http.Response('{}', 200);
+          }),
+        );
+
+        await api.getJson(
+          'ranches',
+          queryParameters: <String, String>{
+            'accessCode': 'Case-Sensitive & code',
+          },
+        );
+
+        expect(auth.tokenRequests, 1);
+        expect(requests.single.url.origin, 'https://api.example.test');
+        expect(requests.single.url.path, '/api/v1/ranches');
+        expect(requests.single.url.queryParameters, <String, String>{
+          'accessCode': 'Case-Sensitive & code',
+        });
+        expect(requests.single.followRedirects, isFalse);
+      },
+    );
+
     test('does not follow redirects with the bearer token attached', () async {
       var requestCount = 0;
       final api = _api(
@@ -344,6 +374,84 @@ void main() {
       await _expectFailure(
         api.getJson('accounts/me'),
         AuthFailureCode.accountUnavailable,
+      );
+      expect(requestCount, 1);
+      expect(auth.tokenRequests, 1);
+    });
+
+    test(
+      'sends advisory POST and PATCH bodies once with a fresh token',
+      () async {
+        final auth = _FakeAuthenticationRepository(user: _identity('uid-1'));
+        final requests = <http.Request>[];
+        final api = _api(
+          auth,
+          MockClient((request) async {
+            requests.add(request);
+            return http.Response(
+              '{"ok":true}',
+              request.method == 'POST' ? 201 : 200,
+            );
+          }),
+        );
+
+        await api.postJson(
+          'ranches/223e4567-e89b-12d3-a456-426614174000/herd-advisories',
+          <String, Object?>{'reason': 'Herd health review'},
+        );
+        await api.patchJson(
+          'ranches/223e4567-e89b-12d3-a456-426614174000/'
+          'herd-advisories/323e4567-e89b-12d3-a456-426614174000',
+          <String, Object?>{
+            'decision': 'grant',
+            'scope': 'Read',
+            'expiresAt': '2027-01-02T23:59:59Z',
+          },
+        );
+
+        expect(auth.tokenRequests, 2);
+        expect(requests.map((request) => request.method), <String>[
+          'POST',
+          'PATCH',
+        ]);
+        expect(requests.map((request) => request.url.path), <String>[
+          '/api/v1/ranches/223e4567-e89b-12d3-a456-426614174000/'
+              'herd-advisories',
+          '/api/v1/ranches/223e4567-e89b-12d3-a456-426614174000/'
+              'herd-advisories/323e4567-e89b-12d3-a456-426614174000',
+        ]);
+        expect(jsonDecode(requests[0].body), <String, Object?>{
+          'reason': 'Herd health review',
+        });
+        expect(jsonDecode(requests[1].body), <String, Object?>{
+          'decision': 'grant',
+          'scope': 'Read',
+          'expiresAt': '2027-01-02T23:59:59Z',
+        });
+        expect(_header(requests[0], 'authorization'), 'Bearer token-1');
+        expect(_header(requests[1], 'authorization'), 'Bearer token-2');
+        expect(requests.every((request) => !request.followRedirects), isTrue);
+      },
+    );
+
+    test('does not retry an advisory write rejected by the server', () async {
+      final auth = _FakeAuthenticationRepository(user: _identity('uid-1'));
+      var requestCount = 0;
+      final api = _api(
+        auth,
+        MockClient((_) async {
+          requestCount++;
+          return http.Response('{}', 409);
+        }),
+      );
+
+      await _expectFailure(
+        api.postJson(
+          'ranches/223e4567-e89b-12d3-a456-426614174000/'
+          'herd-advisories',
+          <String, Object?>{'reason': 'Review'},
+        ),
+        AuthFailureCode.unknown,
       );
       expect(requestCount, 1);
       expect(auth.tokenRequests, 1);

@@ -8,7 +8,7 @@ import 'package:http/http.dart' as http;
 import '../../domain/model/auth_failure.dart';
 import '../../domain/repositories/authentication_repository.dart';
 
-/// Sends authenticated, same-origin account requests to the configured API.
+/// Sends authenticated, same-origin IAM requests to the configured API.
 final class AuthenticatedApiClient {
   AuthenticatedApiClient({
     required Uri baseUri,
@@ -30,12 +30,65 @@ final class AuthenticatedApiClient {
   final String Function() _languageTag;
   final Duration _timeout;
 
+  bool get isConfigured => _authentication.isConfigured;
+
   /// Fetches one JSON resource without retaining or retrying an identity token.
-  Future<Object?> getJson(String path) async {
-    return _runRequest(() => _sendJson(method: 'GET', path: path));
+  Future<Object?> getJson(
+    String path, {
+    Map<String, String>? queryParameters,
+    Future<String> Function()? tokenProvider,
+    bool Function()? isContextCurrent,
+  }) async {
+    return _runRequest(
+      () => _sendJson(
+        method: 'GET',
+        path: path,
+        queryParameters: queryParameters,
+        tokenProvider: tokenProvider,
+        isContextCurrent: isContextCurrent,
+      ),
+    );
   }
 
-  /// Creates one account. This is deliberately the only authenticated POST.
+  /// Sends one authenticated JSON POST and expects a created resource.
+  Future<Object?> postJson(
+    String path,
+    Map<String, Object?> body, {
+    Future<String> Function()? tokenProvider,
+    bool Function()? isContextCurrent,
+  }) async {
+    return _runRequest(
+      () => _sendJson(
+        method: 'POST',
+        path: path,
+        body: body,
+        expectedStatusCode: 201,
+        tokenProvider: tokenProvider,
+        isContextCurrent: isContextCurrent,
+      ),
+    );
+  }
+
+  /// Sends one authenticated JSON PATCH and expects an updated resource.
+  Future<Object?> patchJson(
+    String path,
+    Map<String, Object?> body, {
+    Future<String> Function()? tokenProvider,
+    bool Function()? isContextCurrent,
+  }) async {
+    return _runRequest(
+      () => _sendJson(
+        method: 'PATCH',
+        path: path,
+        body: body,
+        expectedStatusCode: 200,
+        tokenProvider: tokenProvider,
+        isContextCurrent: isContextCurrent,
+      ),
+    );
+  }
+
+  /// Creates one account using the account-registration contract.
   Future<Object?> postAccountRegistration(Map<String, Object?> body) async {
     return _runRequest(() {
       _validateAccountRegistrationBody(body);
@@ -44,6 +97,7 @@ final class AuthenticatedApiClient {
         path: 'accounts',
         body: body,
         expectedStatusCode: 201,
+        isAccountRegistration: true,
       );
     });
   }
@@ -67,13 +121,18 @@ final class AuthenticatedApiClient {
   Future<Object?> _sendJson({
     required String method,
     required String path,
+    Map<String, String>? queryParameters,
     Map<String, Object?>? body,
     int? expectedStatusCode,
+    bool isAccountRegistration = false,
+    Future<String> Function()? tokenProvider,
+    bool Function()? isContextCurrent,
   }) async {
-    final uri = _buildUri(path);
+    final uri = _buildUri(path, queryParameters: queryParameters);
     if (!_authentication.isConfigured) {
       throw const AuthFailure(AuthFailureCode.configuration);
     }
+    _ensureContextCurrent(isContextCurrent);
 
     final identity = _authentication.currentUser;
     if (identity == null || identity.uid.isEmpty) {
@@ -85,10 +144,13 @@ final class AuthenticatedApiClient {
     if (_authentication.currentUser?.uid != identity.uid) {
       throw const AuthFailure(AuthFailureCode.accountUnavailable);
     }
-    final token = await _authentication.idToken();
+    final token = tokenProvider == null
+        ? await _authentication.idToken()
+        : await tokenProvider();
     if (_authentication.currentUser?.uid != identity.uid) {
       throw const AuthFailure(AuthFailureCode.accountUnavailable);
     }
+    _ensureContextCurrent(isContextCurrent);
     if (token.trim().isEmpty || token.contains(RegExp(r'\s'))) {
       throw const AuthFailure(AuthFailureCode.unknown);
     }
@@ -112,15 +174,20 @@ final class AuthenticatedApiClient {
     if (_authentication.currentUser?.uid != identity.uid) {
       throw const AuthFailure(AuthFailureCode.accountUnavailable);
     }
+    _ensureContextCurrent(isContextCurrent);
 
     final response = await _sendAndRead(request);
     if (_authentication.currentUser?.uid != identity.uid) {
       throw const AuthFailure(AuthFailureCode.accountUnavailable);
     }
+    _ensureContextCurrent(isContextCurrent);
 
     if (expectedStatusCode != null &&
         response.statusCode != expectedStatusCode) {
-      throw _failureForResponse(response, isAccountRegistration: true);
+      throw _failureForResponse(
+        response,
+        isAccountRegistration: isAccountRegistration,
+      );
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw _failureForResponse(response);
@@ -319,27 +386,56 @@ final class AuthenticatedApiClient {
     }
   }
 
-  Uri _buildUri(String path) {
+  Uri _buildUri(String path, {Map<String, String>? queryParameters}) {
     if (path.isEmpty ||
         path.startsWith('/') ||
         path.endsWith('/') ||
         path
             .split('/')
-            .any((segment) => !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(segment))) {
+            .any((segment) => !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(segment)) ||
+        (queryParameters?.entries.any(
+              (entry) =>
+                  !RegExp(r'^[A-Za-z][A-Za-z0-9_-]*$').hasMatch(entry.key) ||
+                  entry.value.contains('\r') ||
+                  entry.value.contains('\n'),
+            ) ??
+            false)) {
       throw const AuthFailure(AuthFailureCode.unknown);
     }
 
-    final uri = _baseUri.replace(path: '${_baseUri.path}/$path');
+    final uri = _baseUri.replace(
+      path: '${_baseUri.path}/$path',
+      queryParameters: queryParameters,
+    );
     if (uri.scheme != _baseUri.scheme ||
         uri.host != _baseUri.host ||
         uri.port != _baseUri.port ||
         uri.userInfo.isNotEmpty ||
         uri.path != '${_baseUri.path}/$path' ||
-        uri.hasQuery ||
+        !_hasExactQuery(uri, queryParameters) ||
         uri.hasFragment) {
       throw const AuthFailure(AuthFailureCode.unknown);
     }
     return uri;
+  }
+
+  bool _hasExactQuery(Uri uri, Map<String, String>? expected) {
+    if (expected == null) return !uri.hasQuery;
+    final actual = uri.queryParametersAll;
+    if (actual.length != expected.length) return false;
+    for (final entry in expected.entries) {
+      if (actual[entry.key]?.length != 1 ||
+          actual[entry.key]!.single != entry.value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _ensureContextCurrent(bool Function()? isContextCurrent) {
+    if (isContextCurrent != null && !isContextCurrent()) {
+      throw const AuthFailure(AuthFailureCode.accountUnavailable);
+    }
   }
 
   static Uri _validateBaseUri(Uri uri) {
