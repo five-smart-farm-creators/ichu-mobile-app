@@ -44,7 +44,7 @@ Add or update tests for changed behavior. Report any checks that could not be ru
 
 ### DDD boundaries and Flutter composition
 
-- Organize authorized business capabilities under `lib/features/<context>/`, using Dart `lowercase_with_underscores` names. IAM, read-only Cattle Information, and latest animal monitoring are implemented; do not create the other product contexts or unused folders speculatively.
+- Organize authorized business capabilities under `lib/features/<context>/`, using Dart `lowercase_with_underscores` names. IAM, read-only Cattle Information, and Operations Monitoring reads (latest telemetry and cloud alerts) are implemented; do not create the other product contexts or unused folders speculatively.
 - Add `domain/model/` and `domain/repositories/` when models and ports are required. Keep domain code plain Dart: no Flutter, Firebase, platform storage, HTTP clients, or transport serialization.
 - Put use-case coordination in `application/`, adapters in `infrastructure/`, and pages/widgets in `presentation/`. Widgets call application services rather than platform adapters. Future cross-context collaboration must use explicit application facades, not another context's internals.
 - Keep bootstrap, deployment settings, app-wide layout, and theme in `lib/core/` and the app entrypoints. Keep `lib/shared/` business-neutral; do not move IAM rules there for convenience.

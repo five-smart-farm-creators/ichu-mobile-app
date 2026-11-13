@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/layout/public_shell.dart';
 import '../../../../shared/application/services/language_service.dart';
@@ -9,6 +8,7 @@ import '../../../../shared/infrastructure/i18n/generated/app_localizations.dart'
 import '../../application/services/monitoring_read_service.dart';
 import '../../domain/model/latest_telemetry.dart';
 import '../../domain/model/monitoring_failure.dart';
+import '../widgets/monitoring_format.dart';
 
 /// Presents a server-evaluated snapshot, not a live or clinical assessment.
 final class AnimalMonitoringPage extends StatefulWidget {
@@ -132,7 +132,10 @@ final class _AnimalMonitoringPageState extends State<AnimalMonitoringPage> {
                         ),
                         _Value(
                           label: strings.monitoringEvaluatedAt,
-                          value: _time(strings, snapshot.evaluatedAt),
+                          value: MonitoringFormat.instant(
+                            strings,
+                            snapshot.evaluatedAt,
+                          ),
                         ),
                         _Value(
                           label: strings.monitoringOrigin,
@@ -145,7 +148,10 @@ final class _AnimalMonitoringPageState extends State<AnimalMonitoringPage> {
                           label: strings.monitoringLastCapture,
                           value: snapshot.lastReadingRecordedAt == null
                               ? strings.monitoringNoCapture
-                              : _time(strings, snapshot.lastReadingRecordedAt!),
+                              : MonitoringFormat.instant(
+                                  strings,
+                                  snapshot.lastReadingRecordedAt!,
+                                ),
                         ),
                         Text(strings.monitoringSnapshotNote),
                       ],
@@ -190,14 +196,14 @@ final class _AnimalMonitoringPageState extends State<AnimalMonitoringPage> {
                         else ...[
                           _Value(
                             label: strings.monitoringLatitude,
-                            value: _number(
+                            value: MonitoringFormat.number(
                               strings,
                               snapshot.lastKnownPosition.latitude!,
                             ),
                           ),
                           _Value(
                             label: strings.monitoringLongitude,
-                            value: _number(
+                            value: MonitoringFormat.number(
                               strings,
                               snapshot.lastKnownPosition.longitude!,
                             ),
@@ -205,7 +211,7 @@ final class _AnimalMonitoringPageState extends State<AnimalMonitoringPage> {
                           _Value(
                             label: strings.monitoringAccuracy,
                             value: strings.monitoringMeters(
-                              _number(
+                              MonitoringFormat.number(
                                 strings,
                                 snapshot.lastKnownPosition.accuracyMeters!,
                               ),
@@ -271,7 +277,7 @@ final class _Indicator extends StatelessWidget {
                 Text(strings.monitoringIndicatorUnavailable)
               else ...[
                 Text(
-                  '${_number(strings, indicator.value!)} $unit',
+                  '${MonitoringFormat.number(strings, indicator.value!)} $unit',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 12),
@@ -301,7 +307,7 @@ final class _Capture extends StatelessWidget {
       children: [
         _Value(
           label: strings.monitoringCapturedAt,
-          value: _time(strings, recordedAt),
+          value: MonitoringFormat.instant(strings, recordedAt),
         ),
         Text(isStale ? strings.monitoringStale : strings.monitoringNotStale),
       ],
@@ -328,30 +334,6 @@ final class _Value extends StatelessWidget {
   );
 }
 
-String _time(AppLocalizations strings, DateTime value) =>
-    DateFormat.yMMMd(strings.localeName).add_Hms().format(value.toLocal());
-
-String _number(AppLocalizations strings, double value) {
-  final magnitude = value.abs();
-  // Preserve the shortest decimal representation instead of exposing binary
-  // rounding artifacts through a fixed high-precision formatting pattern.
-  final representation =
-      magnitude != 0 && (magnitude < 0.000001 || magnitude >= 1e9)
-      ? value.toStringAsExponential()
-      : value.toString();
-  final parts = representation.split('e');
-  final mantissa = parts.first.endsWith('.0')
-      ? parts.first.substring(0, parts.first.length - 2)
-      : parts.first;
-  final decimal = NumberFormat.decimalPattern(
-    strings.localeName,
-  ).symbols.DECIMAL_SEP;
-  final localized = mantissa.replaceAll('.', decimal);
-  return parts.length == 1
-      ? localized
-      : '${localized}E${int.parse(parts.last)}';
-}
-
 String _failureText(AppLocalizations strings, MonitoringFailureCode code) =>
     switch (code) {
       MonitoringFailureCode.configuration =>
@@ -365,5 +347,6 @@ String _failureText(AppLocalizations strings, MonitoringFailureCode code) =>
       MonitoringFailureCode.serviceUnavailable =>
         strings.monitoringErrorUnavailable,
       MonitoringFailureCode.invalidResponse => strings.monitoringErrorResponse,
+      MonitoringFailureCode.invalidSearch => strings.monitoringErrorUnknown,
       MonitoringFailureCode.unknown => strings.monitoringErrorUnknown,
     };

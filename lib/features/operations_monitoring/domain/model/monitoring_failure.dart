@@ -7,6 +7,7 @@ enum MonitoringFailureCode {
   network,
   serviceUnavailable,
   invalidResponse,
+  invalidSearch,
   unknown,
 }
 

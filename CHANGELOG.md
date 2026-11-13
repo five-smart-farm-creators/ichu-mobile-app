@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Immutable ranch alert contracts and real page envelopes with known workflow/type/severity metadata, captured/cloud-received times, stored acknowledgement fields, and server-bounded pagination/filter validation.
+- A constrained alert-list GET sharing the existing Operations Monitoring transport, with tenant/resource mapping, canonical status queries, safe errors, fresh IAM-facade tokens, and preserved timeout/redirect/replay safeguards.
+- Context-bound alert page coordination with replacement pagination, real server totals, explicit retry, deduplicated pending intent, and isolation across query/ranch/session changes and late responses.
+- Guarded EN/ES cloud-alert reads for all existing server-authorized roles, expandable returned event snapshots without detail requests or mutations, and explicit historical/empty/zero/synchronization caveats.
 - Latest-only animal monitoring contracts with independent nullable observations, typed units/origin, capture timestamps, and server-evaluated freshness without inferred health states.
 - Fixed authorized monitoring GET transport and strict response mapping for identifiers, availability, finite numbers, GPS bounds, and offset-aware timestamps, with bounded responses and no replay or redirects.
 - Context-bound monitoring coordination with deduplicated pending intent, explicit retry, and stale-result isolation across ranch/animal changes, identity drift, expiry, revalidation, logout, and disposal.
@@ -47,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented authorized ranch selection, discarded access credentials, conservative expiration handling, session-only context ownership, and verified selector/native regression checks with explicit live-integration limits.
 
 ### Changed
+- Reused Operations Monitoring presentation formatting for both latest observations and alert events, preserving localized decimals without binary artifacts and local capture/reception instants.
 - Extended account navigation with selection-bound animal reads and ranch-scoped detail guards; documented topic-branch cleanup after confirmed merges while preserving integration/release branches and unmerged work.
 - Restricted mobile professional profiles to read-only until the backend can safely order or identify ambiguous writes; removed unused editor contracts, save errors, and mutation transport code.
 - Aligned mobile email inputs with the backend's 254-character bound and kept new-account password rules separate from existing-identity sign-in validation.

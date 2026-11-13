@@ -19,6 +19,7 @@ final class SessionAccountPage extends StatelessWidget {
     required this.onOpenProfile,
     required this.onOpenRanches,
     this.onOpenAnimals,
+    this.onOpenAlerts,
   });
 
   final LanguageService language;
@@ -28,6 +29,7 @@ final class SessionAccountPage extends StatelessWidget {
   final VoidCallback onOpenProfile;
   final VoidCallback onOpenRanches;
   final VoidCallback? onOpenAnimals;
+  final VoidCallback? onOpenAlerts;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -140,6 +142,17 @@ final class SessionAccountPage extends StatelessWidget {
                     : null,
                 icon: const Icon(Icons.pets_outlined),
                 label: Text(strings.cattleTitle),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (onOpenAlerts != null) ...[
+              OutlinedButton.icon(
+                key: const Key('account-alerts'),
+                onPressed: ranchSelection.selectedRanch != null
+                    ? onOpenAlerts
+                    : null,
+                icon: const Icon(Icons.notifications_active_outlined),
+                label: Text(strings.alertTitle),
               ),
               const SizedBox(height: 12),
             ],

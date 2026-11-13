@@ -23,8 +23,10 @@ import 'features/iam/infrastructure/repositories/iam_account_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_professional_profile_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_account_registration_repository.dart';
 import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'features/operations_monitoring/application/services/alert_read_service.dart';
 import 'features/operations_monitoring/infrastructure/http/monitoring_api_client.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_monitoring_repository.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_alert_repository.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/preferences/device_language_preference_repository.dart';
 
@@ -99,19 +101,21 @@ Future<void> main() async {
           : null,
     ),
   );
+  final monitoringApi = config.isApiConfigured
+      ? MonitoringApiClient(
+          baseUri: config.apiBaseUri!,
+          client: client,
+          session: ranchAccess,
+          languageTag: () => language.current.code == 'es' ? 'es-419' : 'en-US',
+        )
+      : null;
   final monitoringService = MonitoringReadService(
     access: ranchAccess,
-    monitoring: RestMonitoringRepository(
-      api: config.isApiConfigured
-          ? MonitoringApiClient(
-              baseUri: config.apiBaseUri!,
-              client: client,
-              session: ranchAccess,
-              languageTag: () =>
-                  language.current.code == 'es' ? 'es-419' : 'en-US',
-            )
-          : null,
-    ),
+    monitoring: RestMonitoringRepository(api: monitoringApi),
+  );
+  final alertService = AlertReadService(
+    access: ranchAccess,
+    alerts: RestAlertRepository(api: monitoringApi),
   );
   runApp(
     IchuApp(
@@ -122,7 +126,9 @@ Future<void> main() async {
       ranchSelection: ranchSelection,
       cattleService: cattleService,
       monitoringService: monitoringService,
+      alertService: alertService,
       onDispose: () {
+        alertService.dispose();
         monitoringService.dispose();
         cattleService.dispose();
         ranchAccess.dispose();

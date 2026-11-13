@@ -24,13 +24,17 @@ import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/login_page.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/session_account_page.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/application/services/alert_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/ranch_alerts_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
 import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 
 import 'support/fake_iam_repositories.dart';
 import 'support/fake_cattle_repository.dart';
 import 'support/fake_monitoring_repository.dart';
+import 'support/fake_alert_repository.dart';
 import 'support/fake_registration_repositories.dart';
 import 'support/fake_professional_profile_repository.dart';
 import 'support/memory_language_preferences.dart';
@@ -69,6 +73,8 @@ Future<
     FakeCattleRepository cattle,
     MonitoringReadService monitoringService,
     FakeMonitoringRepository monitoring,
+    AlertReadService alertService,
+    FakeAlertRepository alerts,
   })
 >
 pumpApp(
@@ -110,6 +116,8 @@ pumpApp(
     access: ranchAccess,
     monitoring: monitoring,
   );
+  final alerts = FakeAlertRepository();
+  final alertService = AlertReadService(access: ranchAccess, alerts: alerts);
   final profiles = FakeProfessionalProfileRepository()..account = account;
   final profileService = ProfessionalProfileService(
     session: auth,
@@ -130,6 +138,7 @@ pumpApp(
     accounts: registrationAccounts,
   );
   addTearDown(() async {
+    alertService.dispose();
     monitoringService.dispose();
     cattleService.dispose();
     ranchAccess.dispose();
@@ -152,6 +161,7 @@ pumpApp(
       ranchSelection: ranchSelection,
       cattleService: cattleService,
       monitoringService: monitoringService,
+      alertService: alertService,
       initialRoute: initialRoute,
     ),
   );
@@ -170,6 +180,8 @@ pumpApp(
     cattle: cattle,
     monitoringService: monitoringService,
     monitoring: monitoring,
+    alertService: alertService,
+    alerts: alerts,
   );
 }
 
@@ -194,6 +206,77 @@ TextField passwordField(WidgetTester tester) => tester.widget<TextField>(
 );
 
 void main() {
+  testWidgets('ranch alert links require a validated session', (tester) async {
+    final fixture = await pumpApp(tester, initialRoute: '/account/alerts');
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(fixture.alerts.calls, 0);
+  });
+  testWidgets('alert route query cannot choose a ranch', (tester) async {
+    final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+    GoRouter.of(
+      tester.element(find.byType(SessionAccountPage)),
+    ).go('/account/alerts?ranchId=${_ranch.ranchId}');
+    await tester.pumpAndSettle();
+    expect(find.text('Authorized ranches'), findsOneWidget);
+    expect(fixture.ranchSelection.selectedRanch, isNull);
+    expect(fixture.alerts.calls, 0);
+  });
+  for (final role in AccountRole.values) {
+    testWidgets(
+      '${role.name} can read alerts only in the explicitly selected ranch',
+      (tester) async {
+        final fixture = await pumpApp(
+          tester,
+          restored: true,
+          ranches: [_ranch],
+          account: IamAccount(
+            id: _account.id,
+            email: _account.email,
+            role: role,
+            status: 'Active',
+          ),
+        );
+        final entry = find.byKey(const Key('account-alerts'));
+        expect(tester.widget<OutlinedButton>(entry).onPressed, isNull);
+        fixture.ranchSelection.select(_ranch.ranchId);
+        fixture.alerts.pageResult = AlertPage(
+          page: 1,
+          pageSize: 20,
+          totalCount: 1,
+          items: [
+            syntheticRanchAlert(
+              ranchId: _ranch.ranchId,
+              alertId: '88888888-8888-4888-8888-888888888888',
+            ),
+          ],
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(entry);
+        await tester.pumpAndSettle();
+        await tester.tap(entry);
+        await tester.pumpAndSettle();
+        expect(find.byType(RanchAlertsPage), findsOneWidget);
+        expect(fixture.alerts.requests.single.ranchId, _ranch.ranchId);
+        final router = GoRouter.of(
+          tester.element(find.byType(RanchAlertsPage)),
+        );
+        router.go(
+          '/account/alerts?ranchId=99999999-9999-4999-8999-999999999999',
+        );
+        await tester.pumpAndSettle();
+        expect(fixture.ranchSelection.selectedRanch, same(_ranch));
+        expect(fixture.alerts.calls, 1);
+        expect(fixture.cattle.listCalls, 0);
+        expect(fixture.monitoring.calls, 0);
+        await fixture.auth.refresh();
+        await tester.pumpAndSettle();
+        expect(find.byType(RanchAlertsPage), findsNothing);
+        expect(fixture.alertService.alerts, isEmpty);
+        expect(fixture.alertService.totalCount, isNull);
+        expect(fixture.alerts.calls, 1);
+      },
+    );
+  }
   const cattleId = '33333333-3333-4333-8333-333333333333';
   final monitoringRoute =
       '/account/animals/${_ranch.ranchId}/$cattleId/monitoring';
