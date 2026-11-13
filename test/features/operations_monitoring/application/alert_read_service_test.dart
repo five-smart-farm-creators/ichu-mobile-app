@@ -9,6 +9,8 @@ import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_user.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/alert_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_acknowledgement.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_acknowledgement_result.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_search.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
@@ -120,6 +122,169 @@ void main() {
     ]);
     await service.load();
     expect(() => service.alerts.clear(), throwsUnsupportedError);
+  });
+
+  test('acknowledgement updates the loaded cloud snapshot', () async {
+    final pendingAlert = _alert(_ranchA, 'alert-1');
+    repository.pageResult = _page(_ranchA, 1, 20, 1, [pendingAlert]);
+    expect(await service.load(), isTrue);
+    final request = AlertAcknowledgement(
+      alertId: pendingAlert.alertId,
+      operationId: 'f1111111-1111-4111-8111-111111111111',
+      finding: 'Observed the cloud alert',
+      action: 'Recorded for review',
+      expectedVersion: pendingAlert.version,
+    );
+    repository.acknowledgementResult = AlertAcknowledgementResult.acknowledged(
+      _alert(_ranchA, 'alert-1', AlertStatus.acknowledged),
+    );
+
+    final result = await service.acknowledge(pendingAlert, request);
+
+    expect(result.outcome, AlertAcknowledgementOutcome.acknowledged);
+    expect(service.alerts.single.status, AlertStatus.acknowledged);
+    expect(service.totalCount, 1);
+    expect(repository.acknowledgements.single.ranchId, _ranchA);
+    expect(repository.acknowledgements.single.request, same(request));
+    expect(service.isAcknowledging, isFalse);
+  });
+
+  test(
+    'pending-filter acknowledgement removes the row and adjusts the count',
+    () async {
+      final pendingAlert = _alert(_ranchA, 'alert-1');
+      repository.pageResult = _page(_ranchA, 1, 20, 1, [pendingAlert]);
+      const query = AlertSearch(status: AlertStatus.pending);
+      expect(await service.load(query: query), isTrue);
+      final request = AlertAcknowledgement(
+        alertId: pendingAlert.alertId,
+        operationId: 'f2222222-2222-4222-8222-222222222222',
+        finding: 'Observed',
+        expectedVersion: pendingAlert.version,
+      );
+      repository.pageResult = _page(_ranchA, 1, 20, 0, const []);
+      repository.acknowledgementResult =
+          AlertAcknowledgementResult.acknowledged(
+            _alert(_ranchA, 'alert-1', AlertStatus.acknowledged),
+          );
+
+      await service.acknowledge(pendingAlert, request);
+
+      expect(service.query, query);
+      expect(service.alerts, isEmpty);
+      expect(service.totalCount, 0);
+      expect(service.status, AlertLoadStatus.ready);
+      expect(repository.requests, hasLength(2));
+    },
+  );
+
+  test(
+    'conflict performs a fresh list read without retrying the write',
+    () async {
+      final pendingAlert = _alert(_ranchA, 'alert-1');
+      repository.pageResult = _page(_ranchA, 1, 20, 1, [pendingAlert]);
+      expect(await service.load(), isTrue);
+      final request = AlertAcknowledgement(
+        alertId: pendingAlert.alertId,
+        operationId: 'f3333333-3333-4333-8333-333333333333',
+        finding: 'Observed',
+        expectedVersion: pendingAlert.version,
+      );
+      final acknowledged = _alert(_ranchA, 'alert-1', AlertStatus.acknowledged);
+      repository.acknowledgementResult = AlertAcknowledgementResult.conflict(
+        currentAlert: acknowledged,
+      );
+      repository.pageResult = _page(_ranchA, 1, 20, 1, [acknowledged]);
+
+      final result = await service.acknowledge(pendingAlert, request);
+
+      expect(result.outcome, AlertAcknowledgementOutcome.conflict);
+      expect(repository.acknowledgements, hasLength(1));
+      expect(repository.requests, hasLength(2));
+      expect(service.alerts.single.status, AlertStatus.acknowledged);
+    },
+  );
+
+  test(
+    'retry after an uncertain failure reuses the same operation request',
+    () async {
+      final pendingAlert = _alert(_ranchA, 'alert-1');
+      repository.pageResult = _page(_ranchA, 1, 20, 1, [pendingAlert]);
+      expect(await service.load(), isTrue);
+      final request = AlertAcknowledgement(
+        alertId: pendingAlert.alertId,
+        operationId: 'f4444444-4444-4444-8444-444444444444',
+        finding: 'Observed',
+        expectedVersion: pendingAlert.version,
+      );
+      repository.acknowledgementFailure = const MonitoringFailure(
+        MonitoringFailureCode.network,
+      );
+
+      await expectLater(
+        service.acknowledge(pendingAlert, request),
+        throwsA(
+          isA<MonitoringFailure>().having(
+            (failure) => failure.code,
+            'code',
+            MonitoringFailureCode.network,
+          ),
+        ),
+      );
+      expect(service.isAcknowledging, isFalse);
+      repository.acknowledgementFailure = null;
+      repository.acknowledgementResult =
+          AlertAcknowledgementResult.acknowledged(
+            _alert(_ranchA, 'alert-1', AlertStatus.acknowledged),
+          );
+
+      await service.acknowledge(pendingAlert, request);
+
+      expect(repository.acknowledgements, hasLength(2));
+      expect(
+        repository.acknowledgements.map((entry) => entry.request.operationId),
+        everyElement(request.operationId),
+      );
+      expect(
+        repository.acknowledgements.map((entry) => entry.request.finding),
+        everyElement(request.finding),
+      );
+    },
+  );
+
+  test('a ranch change fences a pending acknowledgement response', () async {
+    final pendingAlert = _alert(_ranchA, 'alert-1');
+    repository.pageResult = _page(_ranchA, 1, 20, 1, [pendingAlert]);
+    expect(await service.load(), isTrue);
+    final request = AlertAcknowledgement(
+      alertId: pendingAlert.alertId,
+      operationId: 'f5555555-5555-4555-8555-555555555555',
+      finding: 'Observed',
+      expectedVersion: pendingAlert.version,
+    );
+    final response = Completer<AlertAcknowledgementResult>();
+    repository.acknowledgementCompleter = response;
+    final pending = service.acknowledge(pendingAlert, request);
+    await Future<void>.value();
+    await harness.select(_ranchB);
+    response.complete(
+      AlertAcknowledgementResult.acknowledged(
+        _alert(_ranchA, 'alert-1', AlertStatus.acknowledged),
+      ),
+    );
+
+    await expectLater(
+      pending,
+      throwsA(
+        isA<MonitoringFailure>().having(
+          (failure) => failure.code,
+          'code',
+          MonitoringFailureCode.contextUnavailable,
+        ),
+      ),
+    );
+    expect(service.alerts, isEmpty);
+    expect(service.status, AlertLoadStatus.idle);
   });
 
   test('invalid page search is local and preserves no stale page', () async {
@@ -609,4 +774,12 @@ final class _ThrowingRepository implements AlertRepository {
       _page(ranchId, query.page, query.pageSize, 0, const []),
     );
   }
+
+  @override
+  Future<AlertAcknowledgementResult> acknowledge(
+    String ranchId,
+    AlertAcknowledgement request,
+  ) => Future<AlertAcknowledgementResult>.error(
+    const MonitoringFailure(MonitoringFailureCode.invalidResponse),
+  );
 }

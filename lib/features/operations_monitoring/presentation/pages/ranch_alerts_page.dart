@@ -7,11 +7,13 @@ import '../../../../shared/application/services/language_service.dart';
 import '../../../../shared/infrastructure/i18n/generated/app_localizations.dart';
 import '../../application/services/alert_read_service.dart';
 import '../../domain/model/alert_search.dart';
+import '../../domain/model/alert_acknowledgement_result.dart';
 import '../../domain/model/monitoring_failure.dart';
 import '../../domain/model/ranch_alert.dart';
 import '../widgets/monitoring_format.dart';
+import '../widgets/alert_acknowledgement_dialog.dart';
 
-/// Reads persisted cloud events; no acknowledgement or local Edge capability.
+/// Reads cloud events and records version-checked cloud acknowledgements.
 final class RanchAlertsPage extends StatefulWidget {
   const RanchAlertsPage({
     super.key,
@@ -61,6 +63,25 @@ final class _RanchAlertsPageState extends State<RanchAlertsPage> {
     });
   }
 
+  Future<void> _acknowledge(RanchAlert alert) async {
+    final outcome = await showDialog<AlertAcknowledgementOutcome>(
+      context: context,
+      builder: (context) =>
+          AlertAcknowledgementDialog(service: widget.service, alert: alert),
+    );
+    if (!mounted || outcome == null) return;
+    final strings = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          outcome == AlertAcknowledgementOutcome.acknowledged
+              ? strings.alertAcknowledgementSaved
+              : strings.alertAcknowledgementConflict,
+        ),
+      ),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant RanchAlertsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -101,7 +122,7 @@ final class _RanchAlertsPageState extends State<RanchAlertsPage> {
               ),
             ),
             const SizedBox(height: 12),
-            Text(strings.alertLead),
+            Text(strings.alertActionLead),
             const SizedBox(height: 16),
             Text(strings.alertCloudNote),
             const SizedBox(height: 20),
@@ -188,7 +209,11 @@ final class _RanchAlertsPageState extends State<RanchAlertsPage> {
                       'alert-row-$_revision-${service.query.page}-${alert.alertId}',
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: _AlertCard(alert: alert),
+                    child: _AlertCard(
+                      alert: alert,
+                      isAcknowledging: service.isAcknowledging,
+                      onAcknowledge: () => unawaited(_acknowledge(alert)),
+                    ),
                   ),
               ],
               const SizedBox(height: 16),
@@ -223,8 +248,14 @@ final class _RanchAlertsPageState extends State<RanchAlertsPage> {
 }
 
 final class _AlertCard extends StatelessWidget {
-  const _AlertCard({required this.alert});
+  const _AlertCard({
+    required this.alert,
+    required this.isAcknowledging,
+    required this.onAcknowledge,
+  });
   final RanchAlert alert;
+  final bool isAcknowledging;
+  final VoidCallback onAcknowledge;
 
   @override
   Widget build(BuildContext context) {
@@ -274,13 +305,23 @@ final class _AlertCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (alert.status == AlertStatus.pending)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: OutlinedButton.icon(
+                  key: Key('alert-acknowledge-${alert.alertId}'),
+                  onPressed: isAcknowledging ? null : onAcknowledge,
+                  icon: const Icon(Icons.cloud_done_outlined),
+                  label: Text(strings.alertAcknowledgeCloud),
+                ),
+              ),
             ExpansionTile(
               key: Key('alert-details-${alert.alertId}'),
               title: Text(strings.alertDetails),
               childrenPadding: const EdgeInsets.all(8),
               expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(strings.alertReadOnlyNote),
+                Text(strings.alertEventSnapshotNote),
                 const SizedBox(height: 16),
                 _Value(label: strings.alertId, value: alert.alertId),
                 _Value(
@@ -443,6 +484,8 @@ String _failureText(AppLocalizations strings, MonitoringFailureCode code) =>
       MonitoringFailureCode.configuration => strings.alertErrorConfiguration,
       MonitoringFailureCode.contextUnavailable => strings.cattleChooseRanch,
       MonitoringFailureCode.invalidSearch => strings.alertErrorSearch,
+      MonitoringFailureCode.invalidAcknowledgement =>
+        strings.alertAcknowledgementErrorInvalid,
       MonitoringFailureCode.unauthenticated =>
         strings.monitoringErrorUnauthenticated,
       MonitoringFailureCode.forbidden => strings.alertErrorForbidden,

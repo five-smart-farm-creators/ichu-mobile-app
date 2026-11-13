@@ -4,6 +4,16 @@ import '../../domain/model/ranch_alert.dart';
 
 /// Validates the implemented ranch-scoped Operations Monitoring alert contract.
 abstract final class AlertMapping {
+  static RanchAlert alertFromPayload(
+    Object? payload, {
+    required String ranchId,
+    required String alertId,
+  }) {
+    final alert = _alert(payload, ranchId);
+    if (!_sameUuid(alert.alertId, alertId)) _invalid();
+    return alert;
+  }
+
   static AlertPage pageFromPayload(
     Object? payload, {
     required String ranchId,

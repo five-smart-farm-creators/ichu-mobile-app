@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_search.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_acknowledgement.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_acknowledgement_result.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/repositories/alert_repository.dart';
@@ -10,7 +12,11 @@ final class FakeAlertRepository implements AlertRepository {
   AlertPage? pageResult;
   Object? failure;
   Completer<AlertPage>? completer;
+  AlertAcknowledgementResult? acknowledgementResult;
+  Completer<AlertAcknowledgementResult>? acknowledgementCompleter;
+  Object? acknowledgementFailure;
   final requests = <({String ranchId, AlertSearch query})>[];
+  final acknowledgements = <({String ranchId, AlertAcknowledgement request})>[];
 
   int get calls => requests.length;
 
@@ -27,6 +33,25 @@ final class FakeAlertRepository implements AlertRepository {
     final result = pageResult;
     if (result != null) return Future<AlertPage>.value(result);
     return Future<AlertPage>.error(
+      const MonitoringFailure(MonitoringFailureCode.invalidResponse),
+    );
+  }
+
+  @override
+  Future<AlertAcknowledgementResult> acknowledge(
+    String ranchId,
+    AlertAcknowledgement request,
+  ) {
+    acknowledgements.add((ranchId: ranchId, request: request));
+    final pending = acknowledgementCompleter;
+    if (pending != null) return pending.future;
+    final error = acknowledgementFailure;
+    if (error != null) {
+      return Future<AlertAcknowledgementResult>.error(error);
+    }
+    final result = acknowledgementResult;
+    if (result != null) return Future<AlertAcknowledgementResult>.value(result);
+    return Future<AlertAcknowledgementResult>.error(
       const MonitoringFailure(MonitoringFailureCode.invalidResponse),
     );
   }
