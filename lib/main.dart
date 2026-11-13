@@ -6,8 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/config/app_config.dart';
+import 'features/cattle_information/application/services/cattle_management_service.dart';
 import 'features/cattle_information/application/services/cattle_read_service.dart';
 import 'features/cattle_information/infrastructure/http/cattle_api_client.dart';
+import 'features/cattle_information/infrastructure/repositories/rest_cattle_command_repository.dart';
 import 'features/cattle_information/infrastructure/repositories/rest_cattle_repository.dart';
 import 'features/iam/application/facades/authorized_ranch_session.dart';
 import 'features/iam/application/services/auth_service.dart';
@@ -90,19 +92,21 @@ Future<void> main() async {
     selection: ranchSelection,
     authentication: identity,
   );
+  final cattleApi = config.isApiConfigured
+      ? CattleApiClient(
+          baseUri: config.apiBaseUri!,
+          client: client,
+          session: ranchAccess,
+          languageTag: () => language.current.code == 'es' ? 'es-419' : 'en-US',
+        )
+      : null;
   final cattleService = CattleReadService(
     access: ranchAccess,
-    cattle: RestCattleRepository(
-      api: config.isApiConfigured
-          ? CattleApiClient(
-              baseUri: config.apiBaseUri!,
-              client: client,
-              session: ranchAccess,
-              languageTag: () =>
-                  language.current.code == 'es' ? 'es-419' : 'en-US',
-            )
-          : null,
-    ),
+    cattle: RestCattleRepository(api: cattleApi),
+  );
+  final cattleManagementService = CattleManagementService(
+    access: ranchAccess,
+    commands: RestCattleCommandRepository(api: cattleApi),
   );
   final herdAdvisoryService = HerdAdvisoryService(
     advisories: RestHerdAdvisoryRepository(
@@ -135,11 +139,13 @@ Future<void> main() async {
       ranchSelection: ranchSelection,
       cattleService: cattleService,
       herdAdvisoryService: herdAdvisoryService,
+      cattleManagementService: cattleManagementService,
       monitoringService: monitoringService,
       alertService: alertService,
       onDispose: () {
         alertService.dispose();
         monitoringService.dispose();
+        cattleManagementService.dispose();
         cattleService.dispose();
         ranchAccess.dispose();
         profileService.dispose();

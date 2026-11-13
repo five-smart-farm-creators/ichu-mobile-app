@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'core/layout/public_shell.dart';
 import 'core/layout/terms_page.dart';
 import 'core/theme/ichu_theme.dart';
+import 'features/cattle_information/application/services/cattle_management_service.dart';
 import 'features/cattle_information/application/services/cattle_read_service.dart';
 import 'features/cattle_information/presentation/pages/cattle_list_page.dart';
 import 'features/cattle_information/presentation/pages/cattle_profile_page.dart';
@@ -40,6 +41,7 @@ final class IchuApp extends StatefulWidget {
     required this.ranchSelection,
     required this.cattleService,
     required this.herdAdvisoryService,
+    required this.cattleManagementService,
     required this.monitoringService,
     required this.alertService,
     this.initialRoute = '/',
@@ -53,6 +55,7 @@ final class IchuApp extends StatefulWidget {
   final RanchSelectionService ranchSelection;
   final CattleReadService cattleService;
   final HerdAdvisoryService herdAdvisoryService;
+  final CattleManagementService cattleManagementService;
   final MonitoringReadService monitoringService;
   final AlertReadService alertService;
   final String initialRoute;
@@ -80,6 +83,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
         oldWidget.ranchSelection != widget.ranchSelection ||
         oldWidget.cattleService != widget.cattleService ||
         oldWidget.herdAdvisoryService != widget.herdAdvisoryService ||
+        oldWidget.cattleManagementService != widget.cattleManagementService ||
         oldWidget.monitoringService != widget.monitoringService ||
         oldWidget.alertService != widget.alertService) {
       _router.dispose();
@@ -244,6 +248,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
             builder: (context, state) => CattleListPage(
               language: widget.language,
               service: widget.cattleService,
+              management: widget.cattleManagementService,
               onBack: () => _router.go('/account'),
               onOpenRanches: () => _router.go('/account/ranches'),
               onOpenCattle: (id) {
@@ -260,6 +265,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
                 builder: (context, state) => CattleProfilePage(
                   language: widget.language,
                   service: widget.cattleService,
+                  management: widget.cattleManagementService,
                   cattleId: state.pathParameters['cattleId']!,
                   onBack: () {
                     widget.cattleService.clearProfile();
