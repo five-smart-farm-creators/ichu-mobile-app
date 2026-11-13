@@ -15,10 +15,14 @@ final class AuthorizedRanchContext {
   const AuthorizedRanchContext._({
     required this.ranchId,
     required this.ranchName,
+    required this.canManage,
   });
 
   final String ranchId;
   final String ranchName;
+
+  /// Server-issued grant hint for showing actions; the server still authorizes each request.
+  final bool canManage;
 }
 
 enum RanchSessionFailureCode {
@@ -223,6 +227,7 @@ final class AuthorizedRanchSession extends ChangeNotifier {
     _context = AuthorizedRanchContext._(
       ranchId: grant.ranchId,
       ranchName: grant.name,
+      canManage: grant.scope == AccessScope.manage,
     );
     if (notify && !_disposed) notifyListeners();
   }
