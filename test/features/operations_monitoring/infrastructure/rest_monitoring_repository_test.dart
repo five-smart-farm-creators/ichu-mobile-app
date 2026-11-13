@@ -14,6 +14,7 @@ import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/iam/domain/repositories/authentication_repository.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/latest_telemetry.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/telemetry_history_query.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/infrastructure/http/monitoring_api_client.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/infrastructure/repositories/rest_monitoring_repository.dart';
 
@@ -356,6 +357,79 @@ void main() {
     );
 
     test(
+      'sends the bounded authorized history query and maps its page',
+      () async {
+        final from = DateTime.utc(2026, 11, 12, 10);
+        final to = DateTime.utc(2026, 11, 13, 10);
+        final query = TelemetryHistoryQuery(
+          from: from,
+          to: to,
+          page: 2,
+          pageSize: 10,
+        );
+        http.Request? captured;
+        final repository = _repository(
+          harness,
+          MockClient((request) async {
+            captured = request;
+            return http.Response(
+              jsonEncode(
+                _historyPayload(from: from, to: to, page: 2, pageSize: 10),
+              ),
+              200,
+            );
+          }),
+        );
+
+        final page = await repository.history(_ranchA, _cattleId, query);
+
+        expect(captured!.method, 'GET');
+        expect(
+          captured!.url.path,
+          '/api/v1/ranches/$_ranchA/cattle/$_cattleId/telemetry',
+        );
+        expect(captured!.url.queryParameters, <String, String>{
+          'from': from.toIso8601String(),
+          'to': to.toIso8601String(),
+          'page': '2',
+          'pageSize': '10',
+        });
+        expect(captured!.headers['Authorization'], 'Bearer synthetic-token');
+        expect(captured!.headers['Accept-Language'], 'es-419');
+        expect(page.cattleId, _cattleId);
+        expect(page.from, from);
+        expect(page.to, to);
+        expect(page.page, 2);
+        expect(page.pageSize, 10);
+        expect(page.totalCount, 11);
+        expect(page.items.single.bodyTemperature.value, 38.6);
+        expect(page.items.single.batteryLevel.status.name, 'absent');
+        expect(page.items.single.position.latitude, -13.5);
+      },
+    );
+
+    test(
+      'maps invalid backend history query status to a safe failure',
+      () async {
+        final from = DateTime.utc(2026, 11, 12);
+        final to = DateTime.utc(2026, 11, 13);
+        final repository = _repository(
+          harness,
+          MockClient((_) async => http.Response('', 400)),
+        );
+
+        await _expectFailure(
+          repository.history(
+            _ranchA,
+            _cattleId,
+            TelemetryHistoryQuery(from: from, to: to),
+          ),
+          MonitoringFailureCode.invalidHistoryQuery,
+        );
+      },
+    );
+
+    test(
       'rejects invalid IDs and ranch scope before token or HTTP access',
       () async {
         var requestCount = 0;
@@ -378,6 +452,22 @@ void main() {
         );
         await _expectFailure(
           repository.latest(_ranchB, _cattleId),
+          MonitoringFailureCode.contextUnavailable,
+        );
+        final historyQuery = TelemetryHistoryQuery(
+          from: DateTime.utc(2026, 11, 12),
+          to: DateTime.utc(2026, 11, 13),
+        );
+        await _expectFailure(
+          repository.history('bad-ranch', _cattleId, historyQuery),
+          MonitoringFailureCode.contextUnavailable,
+        );
+        await _expectFailure(
+          repository.history(_ranchA, 'bad-cattle', historyQuery),
+          MonitoringFailureCode.notFound,
+        );
+        await _expectFailure(
+          repository.history(_ranchB, _cattleId, historyQuery),
           MonitoringFailureCode.contextUnavailable,
         );
         expect(requestCount, 0);
@@ -655,6 +745,65 @@ const String _ranchB = '22222222-2222-4222-8222-222222222222';
 const String _cattleId = '33333333-3333-4333-8333-333333333333';
 const String _otherCattleId = '44444444-4444-4444-8444-444444444444';
 final Uri _baseUri = Uri.parse('https://api.example.test/api/v1');
+
+Map<String, Object?> _historyPayload({
+  required DateTime from,
+  required DateTime to,
+  int page = 1,
+  int pageSize = 20,
+}) => <String, Object?>{
+  'cattleId': _cattleId,
+  'from': from.toIso8601String(),
+  'to': to.toIso8601String(),
+  'oldestRetainedRecordedAt': '2026-10-01T00:00:00Z',
+  'page': page,
+  'pageSize': pageSize,
+  'totalCount': 11,
+  'items': <Object?>[
+    <String, Object?>{
+      'readingId': '55555555-5555-4555-8555-555555555555',
+      'deviceId': '66666666-6666-4666-8666-666666666666',
+      'cattleId': _cattleId,
+      'gatewayId': '77777777-7777-4777-8777-777777777777',
+      'origin': 'EdgeGateway',
+      'recordedAt': from.add(const Duration(hours: 1)).toIso8601String(),
+      'receivedAt': from
+          .add(const Duration(hours: 1, seconds: 2))
+          .toIso8601String(),
+      'bodyTemperature': <String, Object?>{
+        'value': 38.6,
+        'unit': 'celsius',
+        'status': 'Valid',
+        'invalidReason': null,
+      },
+      'activityIndex': <String, Object?>{
+        'value': null,
+        'unit': 'index',
+        'status': 'Absent',
+        'invalidReason': null,
+      },
+      'ruminationMinutes': <String, Object?>{
+        'value': null,
+        'unit': 'minutes',
+        'status': 'Invalid',
+        'invalidReason': 'sensor-error',
+      },
+      'batteryLevel': <String, Object?>{
+        'value': null,
+        'unit': 'percent',
+        'status': 'Absent',
+        'invalidReason': null,
+      },
+      'position': <String, Object?>{
+        'latitude': -13.5,
+        'longitude': -72.3,
+        'accuracyMeters': 5,
+        'status': 'Valid',
+        'invalidReason': null,
+      },
+    },
+  ],
+};
 
 Map<String, Object?> _emptySummary() => <String, Object?>{
   'cattleId': _cattleId,
