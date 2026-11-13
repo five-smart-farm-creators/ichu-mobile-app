@@ -2,6 +2,12 @@
 final class CattleDate implements Comparable<CattleDate> {
   const CattleDate(this.year, this.month, this.day);
 
+  /// Birth and exit rules compare against the server's UTC day, not the device's day.
+  factory CattleDate.utcDateOf(DateTime instant) {
+    final utc = instant.toUtc();
+    return CattleDate(utc.year, utc.month, utc.day);
+  }
+
   final int year;
   final int month;
   final int day;
