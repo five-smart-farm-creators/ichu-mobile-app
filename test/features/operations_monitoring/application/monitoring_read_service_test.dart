@@ -11,6 +11,8 @@ import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/latest_telemetry.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/telemetry_history.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/telemetry_history_query.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/repositories/monitoring_repository.dart';
 
 import '../../../support/fake_iam_repositories.dart';
@@ -468,6 +470,104 @@ void main() {
     },
   );
 
+  test('loads an explicit history period under the selected ranch', () async {
+    final from = DateTime.utc(2026, 10, 1);
+    final to = DateTime.utc(2026, 10, 2);
+    final query = TelemetryHistoryQuery(from: from, to: to);
+    repository.historyResult = syntheticTelemetryHistory(
+      cattleId: _cattleA,
+      from: from,
+      to: to,
+      oldestRetainedRecordedAt: DateTime.utc(2026, 9, 1),
+    );
+
+    expect(await service.loadHistory(_cattleA, query), isTrue);
+
+    expect(repository.historyRequests, hasLength(1));
+    expect(repository.historyRequests.single.ranchId, _ranchA);
+    expect(repository.historyRequests.single.cattleId, _cattleA);
+    expect(repository.historyRequests.single.query, query);
+    expect(service.historyStatus, TelemetryHistoryLoadStatus.ready);
+    expect(service.historyPage!.totalCount, 0);
+    expect(
+      service.historyPage!.oldestRetainedRecordedAt,
+      DateTime.utc(2026, 9, 1),
+    );
+  });
+
+  test(
+    'invalid history period is rejected without a repository request',
+    () async {
+      final instant = DateTime.utc(2026, 10, 1);
+
+      expect(
+        await service.loadHistory(
+          _cattleA,
+          TelemetryHistoryQuery(from: instant, to: instant),
+        ),
+        isFalse,
+      );
+
+      expect(repository.historyCalls, 0);
+      expect(service.historyStatus, TelemetryHistoryLoadStatus.unavailable);
+      expect(
+        service.historyError!.code,
+        MonitoringFailureCode.invalidHistoryQuery,
+      );
+    },
+  );
+
+  test('history pagination uses the count and selected query', () async {
+    final from = DateTime.utc(2026, 10, 1);
+    final to = DateTime.utc(2026, 10, 2);
+    final firstQuery = TelemetryHistoryQuery(from: from, to: to, pageSize: 10);
+    repository.historyResult = syntheticTelemetryHistory(
+      cattleId: _cattleA,
+      from: from,
+      to: to,
+      pageSize: 10,
+      totalCount: 11,
+    );
+
+    expect(await service.loadHistory(_cattleA, firstQuery), isTrue);
+    expect(service.canGoNextHistoryPage, isTrue);
+
+    repository.historyResult = syntheticTelemetryHistory(
+      cattleId: _cattleA,
+      from: from,
+      to: to,
+      page: 2,
+      pageSize: 10,
+      totalCount: 11,
+    );
+    expect(await service.nextHistoryPage(), isTrue);
+
+    expect(repository.historyRequests.last.query.page, 2);
+    expect(service.historyPage!.page, 2);
+    expect(service.canGoNextHistoryPage, isFalse);
+    expect(service.canGoPreviousHistoryPage, isTrue);
+  });
+
+  test('a ranch switch fences pending history and hides its page', () async {
+    final from = DateTime.utc(2026, 10, 1);
+    final to = DateTime.utc(2026, 10, 2);
+    final pending = Completer<TelemetryHistoryPage>();
+    repository.historyCompleter = pending;
+    final read = service.loadHistory(
+      _cattleA,
+      TelemetryHistoryQuery(from: from, to: to),
+    );
+    await Future<void>.value();
+    await harness.select(_ranchB);
+    pending.complete(
+      syntheticTelemetryHistory(cattleId: _cattleA, from: from, to: to),
+    );
+
+    expect(await read, isFalse);
+    expect(service.historyPage, isNull);
+    expect(service.historyStatus, TelemetryHistoryLoadStatus.idle);
+  });
+
   testWidgets(
     'expired grants hide data before the expiry timer notifies consumers',
     (tester) async {
@@ -595,4 +695,11 @@ final class _SynchronousFailureRepository implements MonitoringRepository {
     if (fail) throw StateError('private SDK detail');
     return Future.value(syntheticLatestTelemetry(cattleId: cattleId));
   }
+
+  @override
+  Future<TelemetryHistoryPage> history(
+    String ranchId,
+    String cattleId,
+    TelemetryHistoryQuery query,
+  ) => throw StateError('private SDK detail');
 }
