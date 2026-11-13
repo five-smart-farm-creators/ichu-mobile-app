@@ -6,6 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/config/app_config.dart';
+import 'features/cattle_information/application/services/cattle_read_service.dart';
+import 'features/cattle_information/infrastructure/http/cattle_api_client.dart';
+import 'features/cattle_information/infrastructure/repositories/rest_cattle_repository.dart';
+import 'features/iam/application/facades/authorized_ranch_session.dart';
 import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/authentication_lifecycle.dart';
 import 'features/iam/application/services/registration_service.dart';
@@ -73,6 +77,25 @@ Future<void> main() async {
     profiles: IamProfessionalProfileRepository(api: api),
   );
   final ranchSelection = RanchSelectionService(session: authentication);
+  final ranchAccess = AuthorizedRanchSession(
+    session: authentication,
+    selection: ranchSelection,
+    authentication: identity,
+  );
+  final cattleService = CattleReadService(
+    access: ranchAccess,
+    cattle: RestCattleRepository(
+      api: config.isApiConfigured
+          ? CattleApiClient(
+              baseUri: config.apiBaseUri!,
+              client: client,
+              session: ranchAccess,
+              languageTag: () =>
+                  language.current.code == 'es' ? 'es-419' : 'en-US',
+            )
+          : null,
+    ),
+  );
   runApp(
     IchuApp(
       language: language,
@@ -80,7 +103,10 @@ Future<void> main() async {
       registration: registration,
       profileService: profileService,
       ranchSelection: ranchSelection,
+      cattleService: cattleService,
       onDispose: () {
+        cattleService.dispose();
+        ranchAccess.dispose();
         profileService.dispose();
         ranchSelection.dispose();
         authentication.dispose();

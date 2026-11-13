@@ -1,6 +1,6 @@
 # ICHU Mobile App
 
-Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication, registration, read-only professional profiles, and authorized ranch selection on the shared mobile foundation.
+Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication, registration, read-only professional profiles, authorized ranch selection, and read-only animal information on the shared mobile foundation.
 
 The implemented backend is the functional source of truth for API contracts and business rules. The report defines mobile product scope; the unfinished Web App supplies visual brand references only. Mobile delivery selects field-oriented use cases, not every backend module or browser workflow. Proposed report endpoints must be checked against implemented contracts before use.
 
@@ -12,11 +12,12 @@ The implemented backend is the functional source of truth for API contracts and 
 - Email verification and continuation of an existing registration using an isolated native identity session, without replacing the workspace identity.
 - Authenticated, read-only professional profiles with strict nullable response mapping and an explicit reload. Profile writes are not exposed in the UI, application service, repository port, or HTTP client.
 - Explicit, session-only ranch selection from the server-authorized list, with ranch metadata, effective access scopes, expiration, and no automatic choice or stored access code.
+- Ranch-scoped animal pages with exact ear-tag/status filters, replacement pagination, identification and productive-stage history, and the backend's available collar/last-received-communication summary.
 - Scrollable sign-in, recovery, account, and terms pages with safe areas, accessible controls, and large-text/keyboard support.
 - English by default, Latin American Spanish, and a device language preference. Changing the language updates the current page without resetting navigation.
 - Validated, non-secret API and native Firebase settings. Missing settings leave sign-in unavailable without initializing a fabricated Firebase project or loading sample accounts.
 
-**Ranch administration and advisory management remain separate work.** Choosing an authorized ranch does not join a ranch, grant access, or create records. Field operators cannot self-register through the backend registration use case; existing field-operator accounts may select only server-returned ranches without a role-based scope upgrade. There are no simulated production sessions or ranch records. Cattle Information, IoT Assets, Operations Monitoring, Planning, Dashboard Analytics, and Subscription Plans remain outside this branch's scope.
+**Ranch administration and advisory management remain separate work.** Choosing an authorized ranch does not join a ranch, grant access, or create records. Field operators cannot self-register through the backend registration use case; existing field-operator accounts may select only server-returned ranches without a role-based scope upgrade. There are no simulated production sessions or records. Animal creation/editing/deactivation, collar assignment, telemetry history/live readings, alerts, offline storage, and the remaining business contexts are not implemented by this branch.
 
 ### Field-focused mobile delivery
 
@@ -31,7 +32,7 @@ The report distinguishes a field client for quick monitoring, alerts, and offlin
 
 The initial mobile users are ranch managers and veterinarians. Field-operator task assignment is a product decision still to confirm; existing server role data remains supported. Device inventory administration, geofence editing, payments/subscriptions, detailed analytics, and report exports are not included automatically. Other contexts are created only when an approved mobile use case requires them; the backend's seven-module structure is not a requirement to scaffold seven mobile features.
 
-Each branch starts from updated `develop`, receives contract/security/UX tests, and is published for maintainer review before a separately authorized PR/merge. Next-stage work must not be stacked onto an unapproved feature or committed directly to `develop`.
+Each branch starts from updated `develop`, receives contract/security/UX tests, and is published for maintainer review before a separately authorized PR/merge. Next-stage work must not be stacked onto an unapproved feature or committed directly to `develop`. Under the maintainer's standing cleanup instruction, remove local and remote topic branches only after verifying their closed/merged PR, matching branch tip, and integrated history; preserve `main`, `develop`, and unmerged work.
 
 ## Run locally
 
@@ -130,8 +131,18 @@ The backend's `UserAccount.IsActive(now)` evaluates the block expiry independent
 - The server may return an `accessCode` for managed ranches. The selector deliberately discards it during mapping: there is no model property, persisted value, log, or UI control for the code. The displayed ranch identifier is not that credential.
 - `RanchSelectionService` is an IAM application service observing `AuthService`, not a new bounded context or another authentication state machine. It stores only the canonical chosen grant in memory. Even a single available ranch requires an explicit choice; query-string IDs do not choose one. Unknown, duplicate, and expired grants cannot be selected.
 - Selection and available data clear on logout, session checking/revalidation, UID/account/role changes, snapshot replacement, or disposal. Explicit refresh uses the existing session validation and returns to the account route; it does not restore the previous choice. A locale change alone preserves selection. Restarting the app does not restore a ranch choice from preferences.
-- A timer removes locally expired grants and clears an expired choice at the boundary, while pure getters also filter by the current instant. This is a conservative UI restriction, not an offline authorization lease, server-clock substitute, or guarantee that a grant cannot be revoked remotely. Resume and explicit refresh revalidate with the server; no livestock data is fetched by this stage.
-- No invitation, access-code entry, ranch CRUD, advisory decision, animal navigation, local Edge connection, or offline synchronization is introduced in this branch. Those need separately reviewed product scope and implemented contracts.
+- A timer removes locally expired grants and clears an expired choice at the boundary, while pure getters also filter by the current instant. This is a conservative UI restriction, not an offline authorization lease, server-clock substitute, or guarantee that a grant cannot be revoked remotely. Resume and explicit refresh revalidate with the server; selecting a ranch itself fetches no livestock data.
+- No invitation, access-code entry, ranch CRUD, advisory decision, local Edge connection, or offline synchronization is introduced by the selector.
+
+### Read-only animal information
+
+- `GET /api/v1/ranches/{ranchId}/cattle` returns an array, not a pagination envelope. Mobile uses 20 records per page, replaces rather than appends results, and shows no invented total or `hasMore`. A full page permits an explicit attempt at the next page; an empty following page remains valid and allows returning to the previous page.
+- The exposed filters are exact, trimmed, case-sensitive `earTag` (at most 30 UTF-16 code units) and optional `status` (`Active`/`Inactive`). No status filter includes inactive animals. `page` and `pageSize` must fit server Int32/query limits, with `page >= 1`, `pageSize` from 1 to 100, and a valid Int32 offset. Lot filtering exists on the server but is not exposed in this increment.
+- `GET /api/v1/ranches/{ranchId}/cattle/{cattleId}` returns `{cattle, device}`. Mapping validates both requested identities, nonempty GUIDs/version, known enum names, immutable stage periods, lifecycle fields, and real calendar dates. Date-only birth/exit/stage values never undergo local-time conversion; stage-period ends are exclusive and same-day transitions remain valid.
+- Collar integration has four distinct presentations: unavailable information (not proof of no collar), confirmed no assigned collar, assigned collar without received communication, and assigned collar with a reception timestamp. Only that timestamp is localized as an instant. It is not sensor capture time, a telemetry reading, location, or evidence of a healthy/live animal.
+- Cattle production code depends only on the public IAM `AuthorizedRanchSession` facade. Its opaque context identity binds each read/token to the validated account and canonical selected grant, including A→B→A changes. SDK tokens are obtained per request without manual caching. The Cattle GET client has fixed same-origin routes, disabled redirects, a bounded body/deadline, and no automatic retries, writes, or raw server-error presentation.
+- Independent list/detail operation generations discard superseded responses. Selection loss, expiry, revalidation, identity changes, and logout hide/clear scoped data; a 401/403 invalidates both views and pending reads. Recovery requires an explicit read, not reopening the previous snapshot. Choosing a ranch alone triggers no animal request.
+- The protected list route is `/account/animals`; detail is `/account/animals/{ranchId}/{cattleId}`. An incoming route/query cannot select a ranch. A foreign ranch in a detail route redirects to the current list without requesting that animal. Every real GET still requires backend ranch authorization; local selection grants no permissions.
 
 ### Structure
 
@@ -147,8 +158,14 @@ lib/
     iam/
       domain/                       # Identity, account, permissions, errors, ports
       application/services/         # Session, registration, profiles, ranch choice
+      application/facades/          # Public selected-ranch context/token boundary
       infrastructure/               # Native Firebase and authenticated REST adapters
       presentation/                 # IAM flows and protected account/profile/ranch views
+    cattle_information/
+      domain/                       # Animal snapshots, calendar dates, filters, read port
+      application/services/         # Context-bound list/detail coordination
+      infrastructure/               # Fixed GET transport and strict resource mapping
+      presentation/                 # Localized read-only animal pages and labels
   shared/
     domain/model/                   # Framework-independent language values
     domain/repositories/            # Preference persistence port
@@ -160,7 +177,7 @@ lib/
 
 Dependencies point inward. Domain code is plain Dart, without Flutter, HTTP, Firebase, or JSON transport dependencies. Application services coordinate ports; presentation never accesses platform storage directly. Constructor injection is used instead of a global service locator. `ChangeNotifier` supplies notifications in the language and session application services, not in domain models.
 
-`go_router` owns the stable route graph: `/login`, `/recover`, `/register`, `/terms`, protected `/account`, and its protected `/account/profile` and `/account/ranches` children; `/` selects login or account. Every `/account/` descendant requires a validated session. A validated workspace identity cannot open registration. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and the session service drives authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
+`go_router` owns the stable route graph: `/login`, `/recover`, `/register`, `/terms`, protected `/account`, and its profile/ranch/animal children; `/` selects login or account. Every `/account/` descendant requires a validated session; animal routes also require a current explicit ranch selection. A validated workspace identity cannot open registration. Direct public routes have reliable back behavior. External return destinations are ignored. Locale changes preserve the router, and session/selection notifications drive authorization redirects. App bootstrap composes the SDK, HTTP transport, and domain ports; widgets do not access adapters directly.
 
 `shared_preferences` is used only for the language preference. Flutter's `flutter_localizations`, `intl`, and `gen_l10n` provide localizations. `firebase_core` / `firebase_auth` provide native identity, `http` provides the bounded REST transport, and `go_router` provides guarded navigation. The fonts and images are bundled and never fetched at runtime. See [assets/README.md](assets/README.md) for provenance and font licenses.
 
@@ -228,6 +245,18 @@ Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
 - Synthetic EN/ES selector previews with bundled fonts/icons were rendered and visually inspected locally; fixture ranch names explicitly identify test data. The preview harness, images, public native captures, and build output remain outside version control. These images are not evidence of real ranch access or a native authenticated selector run.
 - A read-only security review found no P1/P2 findings. Dart source/test directory and filename checks pass; no speculative feature folders, dependencies, platform targets, or management APIs were introduced.
 - Public health initially timed out, then returned **200** on the later check. No authenticated ranch response or real user selection is claimed verified: approved native Firebase options/registrations remain missing. iOS-themed widget tests are not a native iOS build/run; that still requires macOS/Xcode. The existing upstream Firebase/Kotlin warning remains documented and the debug APK builds successfully.
+
+### Read-only animal branch verification
+
+Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
+
+- Formatting and static analysis pass; the complete suite has **422 passing tests**. A separate production-configuration run passes all **25 tests**. The new animal widget file contains **31 tests**; these are included in the full count.
+- Domain, facade, adapter, and service coverage checks Int32/query bounds, calendar dates, implemented enums, tenant/animal IDs, all four device states, duplicate identities, no invented totals, replacement pagination, fresh tokens, same-origin GETs, disabled redirects/replay, bounded/malformed responses, and sanitized failures. Async tests cover superseded filters/profiles, A→B→A selection, revalidation, same-UID relogin, silent SDK identity drift, local grant expiry, logout/disposal, and cross-view permission invalidation.
+- EN/ES list/profile widget tests cover read-only returned values, empty/loading/errors, explicit retry, filters/pages, keyboard insets, narrow/landscape layouts at 200% text, Android/iOS themes, and accessibility labels/tap targets/contrast. Router tests reject unsigned animal links, refuse URL-driven ranch selection, and redirect foreign-ranch detail links without fetching that animal.
+- Synthetic EN/ES list/profile previews were rendered with bundled fonts/icons and visually reviewed. Ranch names and animal tags explicitly mark test fixtures. The temporary harness, captures, and build outputs are not committed or evidence of authenticated native animal access.
+- The final debug APK builds, installs, and runs on the Android API 37 emulator. Native launches of the animal list, a ranch-ID query, ranch-scoped detail, selector, and professional profile all return to sign-in without a validated session. Public registration/recovery/terms flows, EN/ES preservation, missing-configuration submission guards, and persistent language regression checks pass. An initial post-install accessibility-root failure was resolved by a forced relaunch before repeating the checks. The existing upstream Firebase/Kotlin warning persists; the debug build succeeds.
+- An independent read-only contract/security review found no P1/P2 findings. No new dependencies, native identifiers, cloud registrations, backend changes, mutations, telemetry history, local Edge client, or offline persistence were introduced.
+- Live Firebase authentication and authorized animal requests remain **unverified**, because approved native Firebase options/registrations are missing. Public health was not rechecked for this snapshot; the earlier ranch-branch result is historical, not a current availability guarantee. Native iOS build/run still requires macOS/Xcode; iOS-themed tests do not substitute for it.
 
 ## Contributing
 
