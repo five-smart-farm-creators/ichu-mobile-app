@@ -22,6 +22,9 @@ import 'features/iam/infrastructure/repositories/firebase_registration_repositor
 import 'features/iam/infrastructure/repositories/iam_account_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_professional_profile_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_account_registration_repository.dart';
+import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'features/operations_monitoring/infrastructure/http/monitoring_api_client.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_monitoring_repository.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/preferences/device_language_preference_repository.dart';
 
@@ -96,6 +99,20 @@ Future<void> main() async {
           : null,
     ),
   );
+  final monitoringService = MonitoringReadService(
+    access: ranchAccess,
+    monitoring: RestMonitoringRepository(
+      api: config.isApiConfigured
+          ? MonitoringApiClient(
+              baseUri: config.apiBaseUri!,
+              client: client,
+              session: ranchAccess,
+              languageTag: () =>
+                  language.current.code == 'es' ? 'es-419' : 'en-US',
+            )
+          : null,
+    ),
+  );
   runApp(
     IchuApp(
       language: language,
@@ -104,7 +121,9 @@ Future<void> main() async {
       profileService: profileService,
       ranchSelection: ranchSelection,
       cattleService: cattleService,
+      monitoringService: monitoringService,
       onDispose: () {
+        monitoringService.dispose();
         cattleService.dispose();
         ranchAccess.dispose();
         profileService.dispose();

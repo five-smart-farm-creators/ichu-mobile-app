@@ -18,6 +18,7 @@ final class CattleProfilePage extends StatefulWidget {
     required this.cattleId,
     required this.onBack,
     required this.onOpenRanches,
+    this.onOpenMonitoring,
   });
 
   final LanguageService language;
@@ -25,6 +26,7 @@ final class CattleProfilePage extends StatefulWidget {
   final String cattleId;
   final VoidCallback onBack;
   final VoidCallback onOpenRanches;
+  final ValueChanged<String>? onOpenMonitoring;
 
   @override
   State<CattleProfilePage> createState() => _CattleProfilePageState();
@@ -34,7 +36,7 @@ final class _CattleProfilePageState extends State<CattleProfilePage> {
   @override
   void initState() {
     super.initState();
-    unawaited(widget.service.loadProfile(widget.cattleId));
+    _loadAfterBuild();
   }
 
   @override
@@ -42,8 +44,21 @@ final class _CattleProfilePageState extends State<CattleProfilePage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.service != widget.service ||
         oldWidget.cattleId != widget.cattleId) {
-      unawaited(widget.service.loadProfile(widget.cattleId));
+      _loadAfterBuild();
     }
+  }
+
+  void _loadAfterBuild() {
+    final service = widget.service;
+    final id = widget.cattleId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !identical(widget.service, service) ||
+          widget.cattleId != id) {
+        return;
+      }
+      unawaited(service.loadProfile(id));
+    });
   }
 
   @override
@@ -94,6 +109,15 @@ final class _CattleProfilePageState extends State<CattleProfilePage> {
               if (service.profileError case final error?)
                 CattleFailureNotice(failure: error),
               if (ready) ...[
+                if (widget.onOpenMonitoring case final openMonitoring?) ...[
+                  OutlinedButton.icon(
+                    key: const Key('cattle-open-monitoring'),
+                    onPressed: () => openMonitoring(profile.cattle.id),
+                    icon: const Icon(Icons.monitor_heart_outlined),
+                    label: Text(strings.monitoringOpen),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Card(
                   key: const Key('cattle-profile-data'),
                   child: Padding(
