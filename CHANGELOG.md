@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Latest-only animal monitoring contracts with independent nullable observations, typed units/origin, capture timestamps, and server-evaluated freshness without inferred health states.
+- Fixed authorized monitoring GET transport and strict response mapping for identifiers, availability, finite numbers, GPS bounds, and offset-aware timestamps, with bounded responses and no replay or redirects.
+- Context-bound monitoring coordination with deduplicated pending intent, explicit retry, and stale-result isolation across ranch/animal changes, identity drift, expiry, revalidation, logout, and disposal.
+- EN/ES monitoring snapshots and historical coordinates, truthful unavailable/zero states, local capture/evaluation times, accessible large-text layouts, and guarded navigation from loaded animal profiles even without a current collar.
 - Read-only animal contracts with immutable stage histories, timezone-independent calendar dates, exact ear-tag/status searches, and server-bounded replacement pagination.
 - Public IAM facade exposing an opaque current ranch context and per-request SDK tokens without leaking IAM infrastructure into Cattle Information.
 - Fixed ranch-scoped animal GET adapters with strict tenant/identity/resource validation, bounded responses, disabled redirects, and no automatic replay.
@@ -51,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Aligned account access with backend authorization and time-based block expiry instead of copying the unfinished web client's status-label restriction; the account view reports server-validated access without relabeling stored status.
 - Raised the minimum iOS deployment target to 15.0 to meet the Firebase plugins' requirements; Android network access is declared and local cleartext API traffic is debug-only.
 - Replaced the starter counter and temporary unauthenticated preview with web-aligned IAM pages, stable guarded routing, and session revalidation when the app resumes.
+
+### Fixed
+- Deferred initial animal-page reads until after widget construction so covered list/profile listeners are not notified during nested navigation builds.
+- Preserved shortest decimal representations in localized monitoring values so temperature/coordinates do not expose binary rounding artifacts and extreme magnitudes are not displayed as zero.
 
 ## [0.1.0] - 2026-11-07
 

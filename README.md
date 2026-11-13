@@ -1,6 +1,6 @@
 # ICHU Mobile App
 
-Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication, registration, read-only professional profiles, authorized ranch selection, and read-only animal information on the shared mobile foundation.
+Flutter client for ICHU, SmartFarm's livestock management platform, targeting **Android and iOS only**. It implements IAM authentication, registration, read-only professional profiles, authorized ranch selection, animal information, and latest monitoring summaries on the shared mobile foundation.
 
 The implemented backend is the functional source of truth for API contracts and business rules. The report defines mobile product scope; the unfinished Web App supplies visual brand references only. Mobile delivery selects field-oriented use cases, not every backend module or browser workflow. Proposed report endpoints must be checked against implemented contracts before use.
 
@@ -13,6 +13,7 @@ The implemented backend is the functional source of truth for API contracts and 
 - Authenticated, read-only professional profiles with strict nullable response mapping and an explicit reload. Profile writes are not exposed in the UI, application service, repository port, or HTTP client.
 - Explicit, session-only ranch selection from the server-authorized list, with ranch metadata, effective access scopes, expiration, and no automatic choice or stored access code.
 - Ranch-scoped animal pages with exact ear-tag/status filters, replacement pagination, identification and productive-stage history, and the backend's available collar/last-received-communication summary.
+- Read-only latest valid temperature, activity, rumination, and historical last-known coordinates, each with explicit availability, capture time, server-evaluated freshness, and reported units/origin. No live tracking or clinical classification is inferred.
 - Scrollable sign-in, recovery, account, and terms pages with safe areas, accessible controls, and large-text/keyboard support.
 - English by default, Latin American Spanish, and a device language preference. Changing the language updates the current page without resetting navigation.
 - Validated, non-secret API and native Firebase settings. Missing settings leave sign-in unavailable without initializing a fabricated Firebase project or loading sample accounts.
@@ -144,6 +145,18 @@ The backend's `UserAccount.IsActive(now)` evaluates the block expiry independent
 - Independent list/detail operation generations discard superseded responses. Selection loss, expiry, revalidation, identity changes, and logout hide/clear scoped data; a 401/403 invalidates both views and pending reads. Recovery requires an explicit read, not reopening the previous snapshot. Choosing a ranch alone triggers no animal request.
 - The protected list route is `/account/animals`; detail is `/account/animals/{ranchId}/{cattleId}`. An incoming route/query cannot select a ranch. A foreign ranch in a detail route redirects to the current list without requesting that animal. Every real GET still requires backend ranch authorization; local selection grants no permissions.
 
+### Latest animal monitoring
+
+- Only `GET /api/v1/ranches/{ranchId}/cattle/{cattleId}/telemetry/latest` is consumed. The backend independently authorizes monitoring access to that ranch and checks the animal/ranch pair. A 404 means that pair was not found, not that telemetry is empty. A valid **200** can contain four unavailable observations, with no substitute zeros.
+- The summary contains `cattleId`, `evaluatedAt`, nullable `lastReadingRecordedAt`, `origin: EdgeGateway`, three indicators (`bodyTemperature`, `activityIndex`, `ruminationMinutes`), and `lastKnownPosition`. Indicators have exact units `celsius`, `index`, and `minutes`. Each available observation has its own capture time and server `isStale` decision; unavailable values, timestamps, and freshness are null. Valid zero values remain available. The latest response contains no battery, collar/device identity, thresholds, alerts, or health assessment.
+- Mapping validates the requested animal ID, known statuses/origin/units, all required nullable fields, real offset-aware timestamps, and finite numbers. Activity and rumination are nonnegative doubles without invented maxima or integer restrictions; temperature has no client-invented clinical range. Available positions require latitude from -90 through 90, longitude from -180 through 180, and nonnegative reported accuracy in meters.
+- Freshness is the server's decision **at `evaluatedAt`**, not a continuously updated mobile clock or live status. The page displays evaluation/capture instants in local time, explicitly warns that it is a snapshot, and offers manual reload. It does not recompute `isStale`, silently refresh, diagnose health, or fabricate absent positions. Independent captures may have different times; sequential server reads do not promise an atomic cross-field snapshot. Future capture timestamps are not rejected using a client clock.
+- Historical readings can remain attributed to an animal after collar reassignment, because the backend resolves assignment at capture time. The monitoring entry is therefore available from a loaded animal profile even without a currently assigned collar. Last-known coordinates are historical, not a live GPS fix, current collar location, map, or geofence.
+- Operations Monitoring depends only on the public IAM authorized-ranch facade, never Cattle Information internals. The app composes a cattle-ID callback and the guarded `/account/animals/{ranchId}/{cattleId}/monitoring` route; URL/query identifiers cannot select a ranch. This sibling route does not construct hidden animal list/profile pages or trigger their reads on a direct monitoring link. The fixed GET adapter obtains an SDK token per request, follows no redirects, bounds response size/time, and automatically retries nothing.
+- Reads are deduplicated by opaque authorization context and cattle ID, and superseded operations are fenced. Selection change/expiry, revalidation, SDK identity drift, logout, and disposal hide old data. Configuration/permission/network recovery requires an explicit new read; old snapshots never reopen by themselves. Pending intent is installed before notifying loading observers so reentrant calls share one request, including after synchronous repository failures.
+- The backend history endpoint is intentionally **not** implemented in this increment. Ingestion, alert reads/actions, Edge connectivity, offline persistence/sync, subscriptions, administration, and analytics remain separate work. A displayed `EdgeGateway` origin describes the cloud response's provenance; it is not evidence of a direct mobile-to-Edge connection.
+- Numeric presentation localizes the decimal separator while keeping the shortest round-trippable decimal, avoiding binary artifacts such as `38.600000000000001`. Very small/large values use scientific notation rather than rounding a valid measurement to zero.
+
 ### Structure
 
 ```text
@@ -166,6 +179,11 @@ lib/
       application/services/         # Context-bound list/detail coordination
       infrastructure/               # Fixed GET transport and strict resource mapping
       presentation/                 # Localized read-only animal pages and labels
+    operations_monitoring/
+      domain/                       # Latest observations, units, availability, read port
+      application/services/         # Explicit context-bound summary lifecycle
+      infrastructure/               # Latest-only GET and strict resource mapping
+      presentation/                 # Snapshot, captured times, historical coordinates
   shared/
     domain/model/                   # Framework-independent language values
     domain/repositories/            # Preference persistence port
@@ -257,6 +275,19 @@ Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
 - The final debug APK builds, installs, and runs on the Android API 37 emulator. Native launches of the animal list, a ranch-ID query, ranch-scoped detail, selector, and professional profile all return to sign-in without a validated session. Public registration/recovery/terms flows, EN/ES preservation, missing-configuration submission guards, and persistent language regression checks pass. An initial post-install accessibility-root failure was resolved by a forced relaunch before repeating the checks. The existing upstream Firebase/Kotlin warning persists; the debug build succeeds.
 - An independent read-only contract/security review found no P1/P2 findings. No new dependencies, native identifiers, cloud registrations, backend changes, mutations, telemetry history, local Edge client, or offline persistence were introduced.
 - Live Firebase authentication and authorized animal requests remain **unverified**, because approved native Firebase options/registrations are missing. Public health was not rechecked for this snapshot; the earlier ranch-branch result is historical, not a current availability guarantee. Native iOS build/run still requires macOS/Xcode; iOS-themed tests do not substitute for it.
+
+### Latest monitoring branch verification
+
+Verified on Windows with Flutter 3.44.6 / Dart 3.12.2 on 2026-11-12:
+
+- Formatting and static analysis pass; the complete suite has **497 passing tests**. The separate production-configuration run passes **25 tests**. New monitoring coverage includes **30 service tests**, **15 adapter tests**, **3 domain tests**, **22 widget tests**, and **5 router regressions**, all included in the full count.
+- Tests cover empty 200 responses, independent observation times, exact units/origin, required nullable fields, malformed resources, finite numbers/GPS limits, valid zeros and extreme magnitudes, offset-aware timestamps, no fabricated clinical bounds, fresh tokens, fixed GET paths, disabled redirects/replay, bounded bodies/timeouts, and safe failures. Sequential-server-read shapes are accepted without inventing cross-field atomicity.
+- Session tests exercise A→B→A ranch changes, superseded animal IDs, loading-observer reentrancy, synchronous adapter failures, explicit recovery after configuration/network/401/403 failures, same-UID relogin, unchanged/changed account and role revalidation, silent SDK identity drift, local expiry, logout, disposal, and cancellation before scheduled I/O starts.
+- EN/ES widget coverage checks snapshot warnings, historical position, local evaluation/capture timestamps, scientific notation, decimal separators without binary artifacts, unavailable versus zero, explicit retry, route/service replacement, locale preservation, Android/iOS themes, narrow/landscape 200% text, keyboard insets, labels, tap targets, and contrast. Direct monitoring routes do not issue hidden animal list/profile reads; unsigned, unselected, malformed, and foreign-ranch links remain guarded.
+- Synthetic EN/ES previews with bundled fonts/icons were rendered and visually reviewed. The visual pass identified decimal artifacts, which were corrected and covered by two dedicated regressions. Fixture names mark synthetic data; temporary preview harnesses, images, logs, and build output remain outside version control and do not demonstrate live monitoring.
+- The final debug APK builds, installs, and runs on the Android API 37 emulator. Unsigned native launches of valid monitoring, a foreign ranch-ID query, malformed animal ID, animal list, ranch selector, and professional profile return to sign-in. Public registration/recovery/terms navigation, EN/ES preservation, unavailable-configuration submission guards, and persisted language regression checks pass. A combined verification command first timed out during installation; a separate native run with a longer budget succeeded. The initial package-update activity handoff was resolved by explicitly relaunching the app before checking routes. The existing upstream Firebase/Kotlin warning persists, but the debug build succeeds.
+- Contract, source/test naming, and DDD dependency checks were performed by the coordinator. No additional independent security sign-off is claimed for this snapshot. There are no backend edits, new dependencies, platform targets, cloud/native identifier changes, ingestion/history/alert APIs, local Edge client, or offline storage.
+- Live Firebase authentication and authorized latest telemetry remain **unverified**, because approved public native Firebase settings/registrations are missing. Public health was not rechecked for this snapshot. Native iOS build/run still needs macOS/Xcode; iOS-themed tests are not a native build/run.
 
 ## Contributing
 
