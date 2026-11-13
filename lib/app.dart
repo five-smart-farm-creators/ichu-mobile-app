@@ -20,7 +20,9 @@ import 'features/iam/presentation/pages/professional_profile_page.dart';
 import 'features/iam/presentation/pages/ranch_selection_page.dart';
 import 'features/iam/presentation/pages/session_account_page.dart';
 import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'features/operations_monitoring/application/services/alert_read_service.dart';
 import 'features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
+import 'features/operations_monitoring/presentation/pages/ranch_alerts_page.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/i18n/generated/app_localizations.dart';
 
@@ -35,6 +37,7 @@ final class IchuApp extends StatefulWidget {
     required this.ranchSelection,
     required this.cattleService,
     required this.monitoringService,
+    required this.alertService,
     this.initialRoute = '/',
     this.onDispose,
   });
@@ -46,6 +49,7 @@ final class IchuApp extends StatefulWidget {
   final RanchSelectionService ranchSelection;
   final CattleReadService cattleService;
   final MonitoringReadService monitoringService;
+  final AlertReadService alertService;
   final String initialRoute;
   final VoidCallback? onDispose;
 
@@ -70,7 +74,8 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
     if (oldWidget.authentication != widget.authentication ||
         oldWidget.ranchSelection != widget.ranchSelection ||
         oldWidget.cattleService != widget.cattleService ||
-        oldWidget.monitoringService != widget.monitoringService) {
+        oldWidget.monitoringService != widget.monitoringService ||
+        oldWidget.alertService != widget.alertService) {
       _router.dispose();
       _router = _createRouter();
       unawaited(widget.authentication.initialize());
@@ -132,6 +137,12 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           return '/account/animals';
         }
       }
+      if (signedIn &&
+          path == '/account/alerts' &&
+          (widget.ranchSelection.selectedRanch == null ||
+              !widget.alertService.hasContext)) {
+        return '/account/ranches';
+      }
       // External return URLs and unrecognized destinations are never followed.
       return null;
     },
@@ -180,8 +191,18 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           onOpenProfile: () => _router.push('/account/profile'),
           onOpenRanches: () => _router.push('/account/ranches'),
           onOpenAnimals: () => _router.push('/account/animals'),
+          onOpenAlerts: () => _router.push('/account/alerts'),
         ),
         routes: [
+          GoRoute(
+            path: 'alerts',
+            builder: (context, state) => RanchAlertsPage(
+              language: widget.language,
+              service: widget.alertService,
+              onBack: () => _router.go('/account'),
+              onOpenRanches: () => _router.go('/account/ranches'),
+            ),
+          ),
           GoRoute(
             path: 'animals/:ranchId/:cattleId/monitoring',
             builder: (context, state) => AnimalMonitoringPage(
