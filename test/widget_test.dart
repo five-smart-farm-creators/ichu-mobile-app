@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ichu_mobile_app/app.dart';
 import 'package:ichu_mobile_app/core/theme/ichu_colors.dart';
+import 'package:ichu_mobile_app/features/cattle_information/application/services/cattle_management_service.dart';
 import 'package:ichu_mobile_app/features/cattle_information/application/services/cattle_read_service.dart';
 import 'package:ichu_mobile_app/features/cattle_information/domain/model/cattle.dart';
 import 'package:ichu_mobile_app/features/cattle_information/presentation/pages/cattle_list_page.dart';
@@ -35,6 +36,7 @@ import 'package:ichu_mobile_app/shared/application/services/language_service.dar
 import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 
 import 'support/fake_iam_repositories.dart';
+import 'support/fake_cattle_command_repository.dart';
 import 'support/fake_cattle_repository.dart';
 import 'support/fake_monitoring_repository.dart';
 import 'support/fake_alert_repository.dart';
@@ -83,6 +85,8 @@ Future<
     CattleReadService cattleService,
     HerdAdvisoryService herdAdvisoryService,
     FakeHerdAdvisoryRepository herdAdvisories,
+    CattleManagementService cattleManagementService,
+    FakeCattleCommandRepository cattleCommands,
     FakeCattleRepository cattle,
     MonitoringReadService monitoringService,
     FakeMonitoringRepository monitoring,
@@ -129,6 +133,11 @@ pumpApp(
     advisories: herdAdvisories,
     selection: ranchSelection,
   );
+  final cattleCommands = FakeCattleCommandRepository();
+  final cattleManagementService = CattleManagementService(
+    access: ranchAccess,
+    commands: cattleCommands,
+  );
   final monitoring = FakeMonitoringRepository();
   final monitoringService = MonitoringReadService(
     access: ranchAccess,
@@ -158,6 +167,7 @@ pumpApp(
   addTearDown(() async {
     alertService.dispose();
     monitoringService.dispose();
+    cattleManagementService.dispose();
     cattleService.dispose();
     ranchAccess.dispose();
     profileService.dispose();
@@ -179,6 +189,7 @@ pumpApp(
       ranchSelection: ranchSelection,
       cattleService: cattleService,
       herdAdvisoryService: herdAdvisoryService,
+      cattleManagementService: cattleManagementService,
       monitoringService: monitoringService,
       alertService: alertService,
       initialRoute: initialRoute,
@@ -198,6 +209,8 @@ pumpApp(
     cattleService: cattleService,
     herdAdvisoryService: herdAdvisoryService,
     herdAdvisories: herdAdvisories,
+    cattleManagementService: cattleManagementService,
+    cattleCommands: cattleCommands,
     cattle: cattle,
     monitoringService: monitoringService,
     monitoring: monitoring,
@@ -559,6 +572,74 @@ void main() {
       expect(find.byType(CattleListPage), findsNothing);
     },
   );
+
+  testWidgets(
+    'management grants reach cattle registration and profile actions through app routes',
+    (tester) async {
+      final fixture = await pumpApp(
+        tester,
+        restored: true,
+        ranches: const [_managedRanch],
+      );
+      const cattleId = '33333333-3333-4333-8333-333333333333';
+      final animal = syntheticCattle(
+        ranchId: _managedRanch.ranchId,
+        id: cattleId,
+      );
+      fixture.cattle
+        ..listResult = <Cattle>[animal]
+        ..profileResult = CattleProfile(
+          cattle: animal,
+          device: const CattleDevice(isAvailable: true),
+        );
+
+      expect(fixture.ranchSelection.select(_managedRanch.ranchId), isTrue);
+      expect(fixture.cattleManagementService.canManage, isTrue);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('account-animals')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account-animals')));
+      await tester.pumpAndSettle();
+
+      final register = find.byKey(const Key('cattle-manage-register'));
+      expect(register, findsOneWidget);
+      await tester.ensureVisible(register);
+      await tester.tap(register);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cattle-manage-form-save')), findsOneWidget);
+      final cancel = find.byKey(const Key('cattle-manage-form-cancel'));
+      await tester.ensureVisible(cancel);
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+
+      final openProfile = find.byKey(Key('cattle-open-$cattleId'));
+      await tester.ensureVisible(openProfile);
+      await tester.tap(openProfile);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cattle-manage-edit')), findsOneWidget);
+      expect(find.byKey(const Key('cattle-manage-stage')), findsOneWidget);
+      expect(find.byKey(const Key('cattle-manage-deactivate')), findsOneWidget);
+    },
+  );
+
+  testWidgets('read grants remain read-only through app composition', (
+    tester,
+  ) async {
+    final fixture = await pumpApp(
+      tester,
+      restored: true,
+      ranches: const [_ranch],
+    );
+    expect(fixture.ranchSelection.select(_ranch.ranchId), isTrue);
+    expect(fixture.cattleManagementService.canManage, isFalse);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('account-animals')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('account-animals')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('cattle-manage-register')), findsNothing);
+  });
 
   testWidgets('ranch selection is protected without a validated session', (
     tester,
