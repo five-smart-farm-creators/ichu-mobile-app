@@ -19,6 +19,8 @@ import 'features/iam/presentation/pages/registration_page.dart';
 import 'features/iam/presentation/pages/professional_profile_page.dart';
 import 'features/iam/presentation/pages/ranch_selection_page.dart';
 import 'features/iam/presentation/pages/session_account_page.dart';
+import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/i18n/generated/app_localizations.dart';
 
@@ -32,6 +34,7 @@ final class IchuApp extends StatefulWidget {
     required this.profileService,
     required this.ranchSelection,
     required this.cattleService,
+    required this.monitoringService,
     this.initialRoute = '/',
     this.onDispose,
   });
@@ -42,6 +45,7 @@ final class IchuApp extends StatefulWidget {
   final ProfessionalProfileService profileService;
   final RanchSelectionService ranchSelection;
   final CattleReadService cattleService;
+  final MonitoringReadService monitoringService;
   final String initialRoute;
   final VoidCallback? onDispose;
 
@@ -65,7 +69,8 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.authentication != widget.authentication ||
         oldWidget.ranchSelection != widget.ranchSelection ||
-        oldWidget.cattleService != widget.cattleService) {
+        oldWidget.cattleService != widget.cattleService ||
+        oldWidget.monitoringService != widget.monitoringService) {
       _router.dispose();
       _router = _createRouter();
       unawaited(widget.authentication.initialize());
@@ -115,6 +120,10 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
               path.startsWith('/account/animals/'))) {
         final selected = widget.ranchSelection.selectedRanch;
         if (selected == null || !widget.cattleService.hasContext) {
+          return '/account/ranches';
+        }
+        if (path.endsWith('/monitoring') &&
+            !widget.monitoringService.hasContext) {
           return '/account/ranches';
         }
         final routeRanch = state.pathParameters['ranchId'];
@@ -174,6 +183,21 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
         ),
         routes: [
           GoRoute(
+            path: 'animals/:ranchId/:cattleId/monitoring',
+            builder: (context, state) => AnimalMonitoringPage(
+              language: widget.language,
+              service: widget.monitoringService,
+              cattleId: state.pathParameters['cattleId']!,
+              onBack: () {
+                widget.monitoringService.clear();
+                _router.go(
+                  '/account/animals/${Uri.encodeComponent(state.pathParameters['ranchId']!)}/${Uri.encodeComponent(state.pathParameters['cattleId']!)}',
+                );
+              },
+              onOpenRanches: () => _router.go('/account/ranches'),
+            ),
+          ),
+          GoRoute(
             path: 'animals',
             builder: (context, state) => CattleListPage(
               language: widget.language,
@@ -200,6 +224,17 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
                     _router.go('/account/animals');
                   },
                   onOpenRanches: () => _router.go('/account/ranches'),
+                  onOpenMonitoring: (id) {
+                    final ranch = widget.ranchSelection.selectedRanch;
+                    if (ranch == null ||
+                        ranch.ranchId.toLowerCase() !=
+                            state.pathParameters['ranchId']!.toLowerCase()) {
+                      return;
+                    }
+                    _router.push(
+                      '/account/animals/${Uri.encodeComponent(ranch.ranchId)}/${Uri.encodeComponent(id)}/monitoring',
+                    );
+                  },
                 ),
               ),
             ],

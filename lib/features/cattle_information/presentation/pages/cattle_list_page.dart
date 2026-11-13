@@ -48,10 +48,13 @@ final class _CattleListPageState extends State<CattleListPage> {
     _status = widget.service.query.status;
     _revision = widget.service.revision;
     widget.service.addListener(_onScopeChanged);
-    if (widget.service.hasContext &&
-        widget.service.status != CattleLoadStatus.ready) {
-      unawaited(widget.service.load());
-    }
+    final service = widget.service;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(widget.service, service)) return;
+      if (service.hasContext && service.status != CattleLoadStatus.ready) {
+        unawaited(service.load());
+      }
+    });
   }
 
   void _onScopeChanged() {

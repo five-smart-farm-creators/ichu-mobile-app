@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ichu_mobile_app/app.dart';
 import 'package:ichu_mobile_app/core/theme/ichu_colors.dart';
 import 'package:ichu_mobile_app/features/cattle_information/application/services/cattle_read_service.dart';
+import 'package:ichu_mobile_app/features/cattle_information/domain/model/cattle.dart';
 import 'package:ichu_mobile_app/features/cattle_information/presentation/pages/cattle_list_page.dart';
 import 'package:ichu_mobile_app/features/cattle_information/presentation/pages/cattle_profile_page.dart';
 import 'package:ichu_mobile_app/features/iam/application/facades/authorized_ranch_session.dart';
@@ -22,11 +23,14 @@ import 'package:ichu_mobile_app/features/iam/domain/model/professional_profile.d
 import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/login_page.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/session_account_page.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
 import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 
 import 'support/fake_iam_repositories.dart';
 import 'support/fake_cattle_repository.dart';
+import 'support/fake_monitoring_repository.dart';
 import 'support/fake_registration_repositories.dart';
 import 'support/fake_professional_profile_repository.dart';
 import 'support/memory_language_preferences.dart';
@@ -63,6 +67,8 @@ Future<
     RanchSelectionService ranchSelection,
     CattleReadService cattleService,
     FakeCattleRepository cattle,
+    MonitoringReadService monitoringService,
+    FakeMonitoringRepository monitoring,
   })
 >
 pumpApp(
@@ -99,6 +105,11 @@ pumpApp(
   );
   final cattle = FakeCattleRepository();
   final cattleService = CattleReadService(access: ranchAccess, cattle: cattle);
+  final monitoring = FakeMonitoringRepository();
+  final monitoringService = MonitoringReadService(
+    access: ranchAccess,
+    monitoring: monitoring,
+  );
   final profiles = FakeProfessionalProfileRepository()..account = account;
   final profileService = ProfessionalProfileService(
     session: auth,
@@ -119,6 +130,7 @@ pumpApp(
     accounts: registrationAccounts,
   );
   addTearDown(() async {
+    monitoringService.dispose();
     cattleService.dispose();
     ranchAccess.dispose();
     profileService.dispose();
@@ -139,6 +151,7 @@ pumpApp(
       profileService: profileService,
       ranchSelection: ranchSelection,
       cattleService: cattleService,
+      monitoringService: monitoringService,
       initialRoute: initialRoute,
     ),
   );
@@ -155,6 +168,8 @@ pumpApp(
     ranchSelection: ranchSelection,
     cattleService: cattleService,
     cattle: cattle,
+    monitoringService: monitoringService,
+    monitoring: monitoring,
   );
 }
 
@@ -179,6 +194,113 @@ TextField passwordField(WidgetTester tester) => tester.widget<TextField>(
 );
 
 void main() {
+  const cattleId = '33333333-3333-4333-8333-333333333333';
+  final monitoringRoute =
+      '/account/animals/${_ranch.ranchId}/$cattleId/monitoring';
+  testWidgets('monitoring deep links require a validated session', (
+    tester,
+  ) async {
+    final fixture = await pumpApp(tester, initialRoute: monitoringRoute);
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(fixture.monitoring.calls, 0);
+  });
+  testWidgets('monitoring URL and query cannot choose an authorized ranch', (
+    tester,
+  ) async {
+    final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+    GoRouter.of(
+      tester.element(find.byType(SessionAccountPage)),
+    ).go('$monitoringRoute?ranchId=${_ranch.ranchId}');
+    await tester.pumpAndSettle();
+    expect(find.text('Authorized ranches'), findsOneWidget);
+    expect(fixture.ranchSelection.selectedRanch, isNull);
+    expect(fixture.monitoring.calls, 0);
+  });
+  testWidgets(
+    'foreign-ranch monitoring links redirect without a monitoring request',
+    (tester) async {
+      final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+      fixture.ranchSelection.select(_ranch.ranchId);
+      final router = GoRouter.of(
+        tester.element(find.byType(SessionAccountPage)),
+      );
+      router.go(
+        '/account/animals/99999999-9999-4999-8999-999999999999/$cattleId/monitoring',
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CattleListPage), findsOneWidget);
+      expect(find.byType(AnimalMonitoringPage), findsNothing);
+      expect(fixture.monitoring.calls, 0);
+    },
+  );
+  testWidgets(
+    'verified animal profile opens monitoring without requiring a current collar',
+    (tester) async {
+      final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+      fixture.ranchSelection.select(_ranch.ranchId);
+      fixture.cattle.profileResult = CattleProfile(
+        cattle: syntheticCattle(
+          ranchId: _ranch.ranchId,
+          id: cattleId,
+          earTag: 'ROUTE-FIXTURE-1',
+        ),
+        device: const CattleDevice(isAvailable: true),
+      );
+      fixture.monitoring.latestResult = syntheticLatestTelemetry(
+        cattleId: cattleId,
+      );
+      GoRouter.of(
+        tester.element(find.byType(SessionAccountPage)),
+      ).go('/account/animals/${_ranch.ranchId}/$cattleId');
+      await tester.pumpAndSettle();
+      expect(fixture.monitoring.calls, 0);
+      final open = find.byKey(const Key('cattle-open-monitoring'));
+      await tester.ensureVisible(open);
+      await tester.pumpAndSettle();
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      expect(find.byType(AnimalMonitoringPage), findsOneWidget);
+      expect(fixture.monitoring.requests.single.ranchId, _ranch.ranchId);
+      expect(fixture.monitoring.requests.single.cattleId, cattleId);
+      expect(fixture.cattle.profileCalls, 1);
+      await tester.tap(find.byTooltip('Back to animal'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CattleProfilePage), findsOneWidget);
+      expect(find.text('ROUTE-FIXTURE-1'), findsOneWidget);
+      expect(fixture.monitoringService.snapshot, isNull);
+      expect(fixture.monitoring.calls, 1);
+    },
+  );
+  testWidgets(
+    'monitoring rejects malformed cattle IDs locally and revalidation removes data',
+    (tester) async {
+      final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+      fixture.ranchSelection.select(_ranch.ranchId);
+      final router = GoRouter.of(
+        tester.element(find.byType(SessionAccountPage)),
+      );
+      router.go('/account/animals/${_ranch.ranchId}/not-a-guid/monitoring');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('monitoring-error')), findsOneWidget);
+      expect(fixture.monitoring.calls, 0);
+      expect(fixture.cattle.listCalls, 0);
+      expect(fixture.cattle.profileCalls, 0);
+      fixture.monitoring.latestResult = syntheticLatestTelemetry(
+        cattleId: cattleId,
+      );
+      router.go(monitoringRoute);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('monitoring-snapshot')), findsOneWidget);
+      expect(fixture.monitoring.calls, 1);
+      expect(fixture.cattle.listCalls, 0);
+      expect(fixture.cattle.profileCalls, 0);
+      await fixture.auth.refresh();
+      await tester.pumpAndSettle();
+      expect(find.byType(AnimalMonitoringPage), findsNothing);
+      expect(fixture.monitoringService.snapshot, isNull);
+      expect(fixture.monitoring.calls, 1);
+    },
+  );
   for (final path in [
     '/account/animals',
     '/account/animals/${_ranch.ranchId}/33333333-3333-4333-8333-333333333333',
