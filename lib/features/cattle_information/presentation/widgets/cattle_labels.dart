@@ -2,6 +2,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../shared/infrastructure/i18n/generated/app_localizations.dart';
 import '../../domain/model/cattle.dart';
+import '../../domain/model/cattle_commands.dart';
 import '../../domain/model/cattle_date.dart';
 
 abstract final class CattleLabels {
@@ -39,6 +40,19 @@ abstract final class CattleLabels {
         CattleExitReason.sale => strings.cattleExitSale,
         CattleExitReason.theft => strings.cattleExitTheft,
         CattleExitReason.culling => strings.cattleExitCulling,
+      };
+
+  static String issue(AppLocalizations strings, CattleInputIssue value) =>
+      switch (value) {
+        CattleInputIssue.earTag => strings.cattleManageIssueEarTag,
+        CattleInputIssue.birthDate => strings.cattleManageIssueBirthDate,
+        CattleInputIssue.birthDateAfterStage =>
+          strings.cattleManageIssueBirthDateAfterStage,
+        CattleInputIssue.stageAlreadyCurrent =>
+          strings.cattleManageIssueStageCurrent,
+        CattleInputIssue.stageDate => strings.cattleManageIssueStageDate,
+        CattleInputIssue.exitDate => strings.cattleManageIssueExitDate,
+        CattleInputIssue.inactive => strings.cattleManageIssueInactive,
       };
 
   static String date(AppLocalizations strings, CattleDate value) =>

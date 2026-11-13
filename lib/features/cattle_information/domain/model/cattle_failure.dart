@@ -9,6 +9,12 @@ enum CattleFailureCode {
   serviceUnavailable,
   invalidResponse,
   unknown,
+  invalidInput,
+  versionConflict,
+  duplicateEarTag,
+  inactive,
+  stageAlreadyCurrent,
+  outcomeUnknown,
 }
 
 /// Presentation maps these stable categories to localized, non-sensitive text.

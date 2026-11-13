@@ -415,6 +415,31 @@ void main() {
         expect(failure.toString(), isNot(contains('sensitive-sdk-token')));
       }
     });
+
+    test('canManage is true only for a server-issued manage grant', () async {
+      const clinicalRanch = '55555555-5555-4555-8555-555555555555';
+      RanchAccess grant(String id, AccessScope scope) => RanchAccess(
+        ranchId: id,
+        scope: scope,
+        name: 'Ranch $id',
+        region: 'Synthetic region',
+        district: 'Synthetic district',
+      );
+      harness.accounts.ranches = <RanchAccess>[
+        grant(_ranchA, AccessScope.manage),
+        grant(_ranchB, AccessScope.read),
+        grant(clinicalRanch, AccessScope.clinicalWrite),
+      ];
+      final facade = harness.createFacade();
+      await harness.initialize();
+
+      expect(harness.selection.select(_ranchA), isTrue);
+      expect(facade.context!.canManage, isTrue);
+      expect(harness.selection.select(_ranchB), isTrue);
+      expect(facade.context!.canManage, isFalse);
+      expect(harness.selection.select(clinicalRanch), isTrue);
+      expect(facade.context!.canManage, isFalse);
+    });
   });
 }
 

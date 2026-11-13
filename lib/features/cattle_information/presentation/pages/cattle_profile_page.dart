@@ -6,9 +6,14 @@ import 'package:intl/intl.dart';
 import '../../../../core/layout/public_shell.dart';
 import '../../../../shared/application/services/language_service.dart';
 import '../../../../shared/infrastructure/i18n/generated/app_localizations.dart';
+import '../../application/services/cattle_management_service.dart';
 import '../../application/services/cattle_read_service.dart';
+import '../../domain/model/cattle.dart';
+import '../widgets/cattle_deactivation_dialog.dart';
 import '../widgets/cattle_failure_notice.dart';
 import '../widgets/cattle_labels.dart';
+import '../widgets/cattle_stage_change_dialog.dart';
+import 'cattle_details_form_page.dart';
 
 final class CattleProfilePage extends StatefulWidget {
   const CattleProfilePage({
@@ -19,6 +24,7 @@ final class CattleProfilePage extends StatefulWidget {
     required this.onBack,
     required this.onOpenRanches,
     this.onOpenMonitoring,
+    this.management,
   });
 
   final LanguageService language;
@@ -27,6 +33,7 @@ final class CattleProfilePage extends StatefulWidget {
   final VoidCallback onBack;
   final VoidCallback onOpenRanches;
   final ValueChanged<String>? onOpenMonitoring;
+  final CattleManagementService? management;
 
   @override
   State<CattleProfilePage> createState() => _CattleProfilePageState();
@@ -61,11 +68,73 @@ final class _CattleProfilePageState extends State<CattleProfilePage> {
     });
   }
 
+  Future<void> _edit(CattleManagementService management, Cattle cattle) async {
+    final strings = AppLocalizations.of(context);
+    final result = await Navigator.of(context).push<Cattle>(
+      MaterialPageRoute<Cattle>(
+        fullscreenDialog: true,
+        builder: (_) =>
+            CattleDetailsFormPage(management: management, original: cattle),
+      ),
+    );
+    if (!mounted) return;
+    _finishWrite(management, result, strings.cattleManageUpdated);
+  }
+
+  Future<void> _changeStage(
+    CattleManagementService management,
+    Cattle cattle,
+  ) async {
+    final strings = AppLocalizations.of(context);
+    final result = await showDialog<Cattle>(
+      context: context,
+      builder: (_) =>
+          CattleStageChangeDialog(management: management, cattle: cattle),
+    );
+    if (!mounted) return;
+    _finishWrite(management, result, strings.cattleManageStageChanged);
+  }
+
+  Future<void> _deactivate(
+    CattleManagementService management,
+    Cattle cattle,
+  ) async {
+    final strings = AppLocalizations.of(context);
+    final result = await showDialog<Cattle>(
+      context: context,
+      builder: (_) =>
+          CattleDeactivationDialog(management: management, cattle: cattle),
+    );
+    if (!mounted) return;
+    _finishWrite(management, result, strings.cattleManageDeactivated);
+  }
+
+  void _finishWrite(
+    CattleManagementService management,
+    Cattle? result,
+    String successMessage,
+  ) {
+    final reload = result != null || management.requiresReload;
+    management.clearError();
+    if (result != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(successMessage)));
+    }
+    if (reload) {
+      unawaited(widget.service.loadProfile(widget.cattleId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.service,
+    listenable: Listenable.merge(<Listenable>[
+      widget.service,
+      ?widget.management,
+    ]),
     builder: (context, _) {
       final service = widget.service;
+      final management = widget.management;
       final strings = AppLocalizations.of(context);
       final theme = Theme.of(context);
       final profile = service.profile;
@@ -175,6 +244,46 @@ final class _CattleProfilePageState extends State<CattleProfilePage> {
                     ),
                   ),
                 ),
+                if (management != null &&
+                    management.canManage &&
+                    profile.cattle.status == CattleStatus.active) ...[
+                  const SizedBox(height: 20),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        key: const Key('cattle-manage-edit'),
+                        onPressed: management.isSaving
+                            ? null
+                            : () =>
+                                  unawaited(_edit(management, profile.cattle)),
+                        icon: const Icon(Icons.edit_outlined),
+                        label: Text(strings.cattleManageEdit),
+                      ),
+                      OutlinedButton.icon(
+                        key: const Key('cattle-manage-stage'),
+                        onPressed: management.isSaving
+                            ? null
+                            : () => unawaited(
+                                _changeStage(management, profile.cattle),
+                              ),
+                        icon: const Icon(Icons.timeline),
+                        label: Text(strings.cattleManageChangeStage),
+                      ),
+                      OutlinedButton.icon(
+                        key: const Key('cattle-manage-deactivate'),
+                        onPressed: management.isSaving
+                            ? null
+                            : () => unawaited(
+                                _deactivate(management, profile.cattle),
+                              ),
+                        icon: const Icon(Icons.archive_outlined),
+                        label: Text(strings.cattleManageDeactivate),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 20),
                 Semantics(
                   header: true,
