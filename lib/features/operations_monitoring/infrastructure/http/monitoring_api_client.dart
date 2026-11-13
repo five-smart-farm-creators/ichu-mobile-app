@@ -10,6 +10,7 @@ import '../../domain/model/alert_acknowledgement.dart';
 import '../../domain/model/alert_search.dart';
 import '../../domain/model/ranch_alert.dart';
 import '../../domain/model/monitoring_failure.dart';
+import '../../domain/model/telemetry_history_query.dart';
 
 /// Sends authorized ranch-scoped Operations Monitoring requests.
 final class MonitoringApiClient {
@@ -46,6 +47,33 @@ final class MonitoringApiClient {
     final context = _requireContext(ranchId);
     final path = 'ranches/$ranchId/cattle/$cattleId/telemetry/latest';
     return _get(context, path);
+  }
+
+  Future<Object?> history(
+    String ranchId,
+    String cattleId,
+    TelemetryHistoryQuery query,
+  ) async {
+    _validateRanchId(ranchId);
+    if (!_isNonzeroUuid(cattleId)) {
+      throw const MonitoringFailure(MonitoringFailureCode.notFound);
+    }
+    if (!query.isValid) {
+      throw const MonitoringFailure(MonitoringFailureCode.invalidHistoryQuery);
+    }
+    final context = _requireContext(ranchId);
+    final path = 'ranches/$ranchId/cattle/$cattleId/telemetry';
+    return _get(
+      context,
+      path,
+      queryParameters: <String, String>{
+        'from': query.from.toUtc().toIso8601String(),
+        'to': query.to.toUtc().toIso8601String(),
+        'page': query.page.toString(),
+        'pageSize': query.pageSize.toString(),
+      },
+      isTelemetryHistory: true,
+    );
   }
 
   Future<Object?> alerts(String ranchId, AlertSearch query) async {
@@ -111,6 +139,7 @@ final class MonitoringApiClient {
     String path, {
     Map<String, String>? queryParameters,
     bool isAlertList = false,
+    bool isTelemetryHistory = false,
   }) async {
     final response = await _requestJson(
       context,
@@ -119,7 +148,11 @@ final class MonitoringApiClient {
       queryParameters: queryParameters,
     );
     if (response.statusCode != 200) {
-      throw _failureForStatus(response.statusCode, isAlertList: isAlertList);
+      throw _failureForStatus(
+        response.statusCode,
+        isAlertList: isAlertList,
+        isTelemetryHistory: isTelemetryHistory,
+      );
     }
     final payload = response.payload;
     if (payload == null) {
@@ -340,6 +373,7 @@ final class MonitoringApiClient {
   MonitoringFailure _failureForStatus(
     int statusCode, {
     bool isAlertList = false,
+    bool isTelemetryHistory = false,
     bool isAcknowledgement = false,
   }) => switch (statusCode) {
     400 when isAlertList => const MonitoringFailure(
@@ -347,6 +381,9 @@ final class MonitoringApiClient {
     ),
     400 when isAcknowledgement => const MonitoringFailure(
       MonitoringFailureCode.invalidAcknowledgement,
+    ),
+    400 when isTelemetryHistory => const MonitoringFailure(
+      MonitoringFailureCode.invalidHistoryQuery,
     ),
     400 => const MonitoringFailure(MonitoringFailureCode.unknown),
     401 => const MonitoringFailure(MonitoringFailureCode.unauthenticated),

@@ -12,6 +12,7 @@ import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/latest_telemetry.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/telemetry_history.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
 import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
@@ -243,12 +244,195 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.textContaining(
-            RegExp('received|communication', caseSensitive: false),
+          find.descendant(
+            of: find.byKey(const Key('monitoring-snapshot')),
+            matching: find.textContaining(
+              RegExp('received|communication', caseSensitive: false),
+            ),
           ),
           findsNothing,
         );
       });
+    },
+  );
+
+  for (final language in AppLanguage.values) {
+    testWidgets('${language.code} loads and pages historical telemetry', (
+      tester,
+    ) async {
+      await _withFixture(tester, (fixture) async {
+        fixture.monitoring.latestResult = syntheticLatestTelemetry(
+          cattleId: _cattleId,
+        );
+        fixture.monitoring.historyBuilder = (ranchId, cattleId, query) {
+          final recordedAt = query.from.add(const Duration(minutes: 10));
+          final reading = syntheticTelemetryReading(
+            readingId: query.page == 1
+                ? '55555555-5555-4555-8555-555555555555'
+                : '66666666-6666-4666-8666-666666666666',
+            cattleId: cattleId,
+            recordedAt: recordedAt,
+            bodyTemperature: const HistoricalMeasurement(
+              value: 38.6,
+              unit: 'celsius',
+              status: HistoricalMeasurementStatus.valid,
+              invalidReason: null,
+            ),
+          );
+          return syntheticTelemetryHistory(
+            cattleId: cattleId,
+            from: query.from,
+            to: query.to,
+            page: query.page,
+            pageSize: query.pageSize,
+            totalCount: 21,
+            oldestRetainedRecordedAt: query.from.subtract(
+              const Duration(days: 2),
+            ),
+            items: [reading],
+          );
+        };
+
+        await tester.pumpWidget(_app(fixture, _page(fixture)));
+        await tester.pumpAndSettle();
+        expect(fixture.monitoring.historyRequests, isEmpty);
+
+        await _tap(
+          tester,
+          find.byKey(const Key('monitoring-history-24-hours')),
+        );
+        expect(fixture.monitoring.historyRequests, hasLength(1));
+        expect(
+          fixture.monitoring.historyRequests.single.query.to.difference(
+            fixture.monitoring.historyRequests.single.query.from,
+          ),
+          const Duration(hours: 24),
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'monitoring-history-reading-55555555-5555-4555-8555-555555555555',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text('38${language == AppLanguage.spanish ? ',' : '.'}6 °C'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(_strings(tester).monitoringHistoryCount(21)),
+          findsOneWidget,
+        );
+
+        await _tap(tester, find.byKey(const Key('monitoring-history-next')));
+        expect(fixture.monitoring.historyRequests, hasLength(2));
+        expect(fixture.monitoring.historyRequests.last.query.page, 2);
+        expect(
+          find.byKey(
+            const Key(
+              'monitoring-history-reading-66666666-6666-4666-8666-666666666666',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(fixture.service.canGoNextHistoryPage, isFalse);
+      }, language: language);
+    });
+  }
+
+  testWidgets('an empty history page is distinct from a failed query', (
+    tester,
+  ) async {
+    await _withFixture(tester, (fixture) async {
+      fixture.monitoring.latestResult = syntheticLatestTelemetry(
+        cattleId: _cattleId,
+      );
+      fixture.monitoring.historyBuilder = (ranchId, cattleId, query) =>
+          syntheticTelemetryHistory(
+            cattleId: cattleId,
+            from: query.from,
+            to: query.to,
+            page: query.page,
+            pageSize: query.pageSize,
+          );
+      await tester.pumpWidget(_app(fixture, _page(fixture)));
+      await tester.pumpAndSettle();
+
+      await _tap(tester, find.byKey(const Key('monitoring-history-load')));
+
+      expect(
+        find.text(_strings(tester).monitoringHistoryEmpty),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('monitoring-history-error')), findsNothing);
+    });
+  });
+
+  testWidgets('history custom date picker opens within supported bounds', (
+    tester,
+  ) async {
+    await _withFixture(tester, (fixture) async {
+      fixture.monitoring.latestResult = syntheticLatestTelemetry(
+        cattleId: _cattleId,
+      );
+      await tester.pumpWidget(_app(fixture, _page(fixture)));
+      await tester.pumpAndSettle();
+
+      await _tap(
+        tester,
+        find.byKey(const Key('monitoring-history-choose-dates')),
+      );
+
+      expect(find.byType(DateRangePickerDialog), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets(
+    'history cards and pagination remain usable on narrow large text',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+      try {
+        await _withFixture(tester, (fixture) async {
+          fixture.monitoring.latestResult = syntheticLatestTelemetry(
+            cattleId: _cattleId,
+          );
+          fixture.monitoring.historyBuilder = (ranchId, cattleId, query) =>
+              syntheticTelemetryHistory(
+                cattleId: cattleId,
+                from: query.from,
+                to: query.to,
+                page: query.page,
+                pageSize: query.pageSize,
+                totalCount: 21,
+                items: [
+                  syntheticTelemetryReading(
+                    readingId: '55555555-5555-4555-8555-555555555555',
+                    cattleId: cattleId,
+                    recordedAt: query.from.add(const Duration(minutes: 1)),
+                  ),
+                ],
+              );
+          await tester.pumpWidget(_app(fixture, _page(fixture)));
+          await tester.pumpAndSettle();
+          await _tap(
+            tester,
+            find.byKey(const Key('monitoring-history-24-hours')),
+          );
+          final next = find.byKey(const Key('monitoring-history-next'));
+          await tester.ensureVisible(next);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(tester.getSize(next).height, greaterThanOrEqualTo(48));
+        });
+      } finally {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+        tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+      }
     },
   );
 
@@ -435,7 +619,7 @@ void main() {
         ),
       );
       await _tap(tester, find.byKey(const Key('monitoring-reload')));
-      expect(find.textContaining('39'), findsOneWidget);
+      expect(find.text('39 °C'), findsOneWidget);
       final replacementService = MonitoringReadService(
         access: fixture.access,
         monitoring: fixture.monitoring,

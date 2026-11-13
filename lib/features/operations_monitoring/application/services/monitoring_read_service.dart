@@ -3,11 +3,15 @@ import 'package:flutter/foundation.dart';
 import '../../../iam/application/facades/authorized_ranch_session.dart';
 import '../../domain/model/latest_telemetry.dart';
 import '../../domain/model/monitoring_failure.dart';
+import '../../domain/model/telemetry_history.dart';
+import '../../domain/model/telemetry_history_query.dart';
 import '../../domain/repositories/monitoring_repository.dart';
 
 enum MonitoringLoadStatus { idle, loading, ready, unavailable }
 
-/// Coordinates explicit, ranch-authorized reads of one cattle monitoring summary.
+enum TelemetryHistoryLoadStatus { idle, loading, ready, unavailable }
+
+/// Coordinates ranch-authorized monitoring reads for one current cattle context.
 final class MonitoringReadService extends ChangeNotifier {
   MonitoringReadService({required this._access, required this._monitoring}) {
     _access.addListener(_onAccessChanged);
@@ -24,6 +28,15 @@ final class MonitoringReadService extends ChangeNotifier {
   MonitoringLoadStatus _status = MonitoringLoadStatus.idle;
   Future<bool>? _pending;
   int _generation = 0;
+  AuthorizedRanchContext? _historyContext;
+  String? _historyCattleId;
+  TelemetryHistoryQuery? _historyQuery;
+  TelemetryHistoryPage? _historyPage;
+  MonitoringFailure? _historyError;
+  TelemetryHistoryLoadStatus _historyStatus = TelemetryHistoryLoadStatus.idle;
+  Future<bool>? _historyPending;
+  TelemetryHistoryQuery? _historyPendingQuery;
+  int _historyGeneration = 0;
   int _revision = 0;
   bool _disposed = false;
 
@@ -38,6 +51,30 @@ final class MonitoringReadService extends ChangeNotifier {
   String? get cattleId => _visible ? _requestedCattleId : null;
   LatestTelemetry? get snapshot => _visible ? _snapshot : null;
   MonitoringFailure? get error => _visible ? _error : null;
+  TelemetryHistoryLoadStatus get historyStatus =>
+      _historyVisible ? _historyStatus : TelemetryHistoryLoadStatus.idle;
+  TelemetryHistoryPage? get historyPage =>
+      _historyVisible ? _historyPage : null;
+  TelemetryHistoryQuery? get historyQuery =>
+      _historyVisible ? _historyQuery : null;
+  MonitoringFailure? get historyError => _historyVisible ? _historyError : null;
+  bool get canLoadHistory =>
+      hasContext &&
+      _monitoring.isConfigured &&
+      historyStatus != TelemetryHistoryLoadStatus.loading;
+  bool get canGoNextHistoryPage {
+    final query = historyQuery;
+    final page = historyPage;
+    return query != null &&
+        page != null &&
+        historyStatus == TelemetryHistoryLoadStatus.ready &&
+        query.page * query.pageSize < page.totalCount;
+  }
+
+  bool get canGoPreviousHistoryPage =>
+      historyQuery != null &&
+      historyStatus != TelemetryHistoryLoadStatus.loading &&
+      historyQuery!.page > 1;
   int get revision => _revision;
 
   bool get _visible =>
@@ -45,6 +82,12 @@ final class MonitoringReadService extends ChangeNotifier {
       _requestContext != null &&
       _access.isCurrent(_requestContext!) &&
       identical(_requestContext, _access.context);
+
+  bool get _historyVisible =>
+      !_disposed &&
+      _historyContext != null &&
+      _access.isCurrent(_historyContext!) &&
+      identical(_historyContext, _access.context);
 
   /// Performs an explicit load; configuration and permission recovery require retry.
   Future<bool> load(String cattleId) {
@@ -65,8 +108,13 @@ final class MonitoringReadService extends ChangeNotifier {
       _error = const MonitoringFailure(MonitoringFailureCode.notFound);
       _status = MonitoringLoadStatus.unavailable;
       _pending = null;
+      _resetHistory();
       notifyListeners();
       return Future<bool>.value(false);
+    }
+    if (_historyCattleId != null &&
+        _historyCattleId!.toLowerCase() != id.toLowerCase()) {
+      _resetHistory();
     }
     if (_pending != null &&
         identical(_requestContext, context) &&
@@ -87,6 +135,172 @@ final class MonitoringReadService extends ChangeNotifier {
     _pending = future;
     notifyListeners();
     return future;
+  }
+
+  /// Loads one explicit half-open period page for the current authorized ranch.
+  Future<bool> loadHistory(String cattleId, TelemetryHistoryQuery query) {
+    if (_disposed) return Future<bool>.value(false);
+    final context = _access.context;
+    if (context == null) {
+      _beginHistoryUnavailable(
+        const MonitoringFailure(MonitoringFailureCode.contextUnavailable),
+      );
+      return Future<bool>.value(false);
+    }
+    if (!_isUuid(cattleId) || !query.isValid) {
+      ++_historyGeneration;
+      _historyContext = context;
+      _historyCattleId = _isUuid(cattleId) ? cattleId : null;
+      _historyQuery = query;
+      _historyPage = null;
+      _historyError = MonitoringFailure(
+        _isUuid(cattleId)
+            ? MonitoringFailureCode.invalidHistoryQuery
+            : MonitoringFailureCode.notFound,
+      );
+      _historyStatus = TelemetryHistoryLoadStatus.unavailable;
+      _historyPending = null;
+      _historyPendingQuery = null;
+      notifyListeners();
+      return Future<bool>.value(false);
+    }
+    if (_historyPending != null &&
+        identical(_historyContext, context) &&
+        _historyCattleId!.toLowerCase() == cattleId.toLowerCase() &&
+        _historyPendingQuery == query) {
+      return _historyPending!;
+    }
+
+    final generation = ++_historyGeneration;
+    _historyContext = context;
+    _historyCattleId = cattleId;
+    _historyQuery = query;
+    _historyPage = null;
+    _historyError = null;
+    _historyStatus = TelemetryHistoryLoadStatus.loading;
+    _historyPendingQuery = query;
+    final future = Future<bool>.microtask(
+      () => _performHistoryLoad(context, cattleId, query, generation),
+    );
+    _historyPending = future;
+    notifyListeners();
+    return future;
+  }
+
+  Future<bool> nextHistoryPage() {
+    final query = historyQuery;
+    return canGoNextHistoryPage && query != null
+        ? loadHistory(_historyCattleId!, query.atPage(query.page + 1))
+        : Future<bool>.value(false);
+  }
+
+  Future<bool> previousHistoryPage() {
+    final query = historyQuery;
+    return canGoPreviousHistoryPage && query != null
+        ? loadHistory(_historyCattleId!, query.atPage(query.page - 1))
+        : Future<bool>.value(false);
+  }
+
+  Future<bool> reloadHistory() {
+    final query = historyQuery;
+    return query == null
+        ? Future<bool>.value(false)
+        : loadHistory(_historyCattleId!, query);
+  }
+
+  Future<bool> _performHistoryLoad(
+    AuthorizedRanchContext context,
+    String cattleId,
+    TelemetryHistoryQuery query,
+    int generation,
+  ) async {
+    try {
+      if (!_isCurrentHistory(context, generation)) return false;
+      if (!_monitoring.isConfigured) {
+        _failHistory(
+          context,
+          generation,
+          const MonitoringFailure(MonitoringFailureCode.configuration),
+        );
+        return false;
+      }
+      final result = await _monitoring.history(
+        context.ranchId,
+        cattleId,
+        query,
+      );
+      if (!_isCurrentHistory(context, generation)) return false;
+      if (result.cattleId.toLowerCase() != cattleId.toLowerCase() ||
+          !result.matches(query)) {
+        _failHistory(
+          context,
+          generation,
+          const MonitoringFailure(MonitoringFailureCode.invalidResponse),
+        );
+        return false;
+      }
+      _historyPage = result;
+      _historyError = null;
+      _historyStatus = TelemetryHistoryLoadStatus.ready;
+      notifyListeners();
+      return true;
+    } on MonitoringFailure catch (failure) {
+      _failHistory(context, generation, failure);
+      return false;
+    } catch (_) {
+      _failHistory(
+        context,
+        generation,
+        const MonitoringFailure(MonitoringFailureCode.unknown),
+      );
+      return false;
+    } finally {
+      if (generation == _historyGeneration) {
+        _historyPending = null;
+        _historyPendingQuery = null;
+      }
+    }
+  }
+
+  bool _isCurrentHistory(AuthorizedRanchContext context, int generation) =>
+      !_disposed &&
+      generation == _historyGeneration &&
+      _access.isCurrent(context) &&
+      identical(_access.context, context);
+
+  void _failHistory(
+    AuthorizedRanchContext context,
+    int generation,
+    MonitoringFailure failure,
+  ) {
+    if (!_isCurrentHistory(context, generation)) return;
+    _historyPage = null;
+    _historyError = failure;
+    _historyStatus = TelemetryHistoryLoadStatus.unavailable;
+    notifyListeners();
+  }
+
+  void _beginHistoryUnavailable(MonitoringFailure failure) {
+    ++_historyGeneration;
+    _historyContext = null;
+    _historyCattleId = null;
+    _historyPage = null;
+    _historyError = failure;
+    _historyStatus = TelemetryHistoryLoadStatus.unavailable;
+    _historyPending = null;
+    _historyPendingQuery = null;
+  }
+
+  void _resetHistory() {
+    ++_historyGeneration;
+    _historyContext = null;
+    _historyCattleId = null;
+    _historyQuery = null;
+    _historyPage = null;
+    _historyError = null;
+    _historyStatus = TelemetryHistoryLoadStatus.idle;
+    _historyPending = null;
+    _historyPendingQuery = null;
   }
 
   Future<bool> _performLoad(
@@ -157,6 +371,7 @@ final class MonitoringReadService extends ChangeNotifier {
     _error = failure;
     _status = MonitoringLoadStatus.unavailable;
     _pending = null;
+    _resetHistory();
     notifyListeners();
   }
 
@@ -169,6 +384,7 @@ final class MonitoringReadService extends ChangeNotifier {
     _error = null;
     _status = MonitoringLoadStatus.idle;
     _pending = null;
+    _resetHistory();
     notifyListeners();
   }
 
@@ -184,6 +400,7 @@ final class MonitoringReadService extends ChangeNotifier {
     _error = null;
     _status = MonitoringLoadStatus.idle;
     _pending = null;
+    _resetHistory();
     _revision++;
     notifyListeners();
   }
@@ -204,6 +421,7 @@ final class MonitoringReadService extends ChangeNotifier {
     _requestContext = null;
     _snapshot = null;
     _pending = null;
+    _resetHistory();
     super.dispose();
   }
 }

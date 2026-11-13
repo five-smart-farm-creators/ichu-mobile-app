@@ -1,8 +1,11 @@
 import '../../domain/model/latest_telemetry.dart';
 import '../../domain/model/monitoring_failure.dart';
+import '../../domain/model/telemetry_history.dart';
+import '../../domain/model/telemetry_history_query.dart';
 import '../../domain/repositories/monitoring_repository.dart';
 import '../http/monitoring_api_client.dart';
 import 'monitoring_mapping.dart';
+import 'telemetry_history_mapping.dart';
 
 /// REST adapter for the implemented read-only Operations Monitoring summary.
 final class RestMonitoringRepository implements MonitoringRepository {
@@ -23,6 +26,24 @@ final class RestMonitoringRepository implements MonitoringRepository {
     return MonitoringMapping.latestTelemetryFromPayload(
       payload,
       cattleId: cattleId,
+    );
+  }
+
+  @override
+  Future<TelemetryHistoryPage> history(
+    String ranchId,
+    String cattleId,
+    TelemetryHistoryQuery query,
+  ) async {
+    final api = _api;
+    if (api == null) {
+      throw const MonitoringFailure(MonitoringFailureCode.configuration);
+    }
+    final payload = await api.history(ranchId, cattleId, query);
+    return TelemetryHistoryMapping.pageFromPayload(
+      payload,
+      cattleId: cattleId,
+      query: query,
     );
   }
 }

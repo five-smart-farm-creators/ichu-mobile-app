@@ -484,6 +484,7 @@ String _failureText(AppLocalizations strings, MonitoringFailureCode code) =>
       MonitoringFailureCode.configuration => strings.alertErrorConfiguration,
       MonitoringFailureCode.contextUnavailable => strings.cattleChooseRanch,
       MonitoringFailureCode.invalidSearch => strings.alertErrorSearch,
+      MonitoringFailureCode.invalidHistoryQuery => strings.alertErrorUnknown,
       MonitoringFailureCode.invalidAcknowledgement =>
         strings.alertAcknowledgementErrorInvalid,
       MonitoringFailureCode.unauthenticated =>
