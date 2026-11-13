@@ -32,6 +32,9 @@ final class RanchSelectionService extends ChangeNotifier {
   /// Whether the current session may inspect its authorized ranch snapshot.
   bool get canSelect => !_disposed && _visibleSnapshot != null;
 
+  /// The role from the currently validated account snapshot.
+  AccountRole? get accountRole => _visibleScope?.role;
+
   /// Current server-authorized ranches, excluding locally expired grants.
   List<RanchAccess> get ranches {
     final snapshot = _visibleSnapshot;

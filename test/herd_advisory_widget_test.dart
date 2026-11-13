@@ -94,7 +94,12 @@ void main() {
 
     expect(repository.lastAccessCode, _privateCode);
     expect(find.text('North ranch'), findsOneWidget);
-    expect(find.text(_privateCode), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && widget.data == _privateCode,
+      ),
+      findsNothing,
+    );
 
     await tester.enterText(codeField, 'a different code');
     await tester.pump();

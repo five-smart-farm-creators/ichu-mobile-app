@@ -9,6 +9,7 @@ import '../../application/services/herd_advisory_service.dart';
 import '../../application/services/ranch_selection_service.dart';
 import '../../domain/model/herd_advisory.dart';
 import '../../domain/model/herd_advisory_failure.dart';
+import '../../domain/model/iam_account.dart';
 import '../../domain/model/ranch_access.dart';
 import '../../domain/model/ranch_summary.dart';
 
@@ -99,8 +100,10 @@ final class _HerdAdvisoryPageState extends State<HerdAdvisoryPage> {
           const SizedBox(height: 8),
           Text(strings.iamAdvisoryLead),
           const SizedBox(height: 24),
-          _buildRequestSection(context, strings, theme),
-          const SizedBox(height: 28),
+          if (widget.selection.accountRole == AccountRole.veterinarian) ...[
+            _buildRequestSection(context, strings, theme),
+            const SizedBox(height: 28),
+          ],
           _buildHistorySection(context, strings, theme, selected),
         ],
       ),

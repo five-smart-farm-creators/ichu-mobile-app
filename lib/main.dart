@@ -12,16 +12,19 @@ import 'features/cattle_information/infrastructure/repositories/rest_cattle_repo
 import 'features/iam/application/facades/authorized_ranch_session.dart';
 import 'features/iam/application/services/auth_service.dart';
 import 'features/iam/application/services/authentication_lifecycle.dart';
+import 'features/iam/application/services/herd_advisory_service.dart';
 import 'features/iam/application/services/registration_service.dart';
 import 'features/iam/application/services/professional_profile_service.dart';
 import 'features/iam/application/services/ranch_selection_service.dart';
 import 'features/iam/infrastructure/configuration/firebase_client_config.dart';
 import 'features/iam/infrastructure/http/authenticated_api_client.dart';
+import 'features/iam/infrastructure/http/herd_advisory_api_client.dart';
 import 'features/iam/infrastructure/repositories/firebase_auth_repository.dart';
 import 'features/iam/infrastructure/repositories/firebase_registration_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_account_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_professional_profile_repository.dart';
 import 'features/iam/infrastructure/repositories/iam_account_registration_repository.dart';
+import 'features/iam/infrastructure/repositories/rest_herd_advisory_repository.dart';
 import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'features/operations_monitoring/application/services/alert_read_service.dart';
 import 'features/operations_monitoring/infrastructure/http/monitoring_api_client.dart';
@@ -101,6 +104,12 @@ Future<void> main() async {
           : null,
     ),
   );
+  final herdAdvisoryService = HerdAdvisoryService(
+    advisories: RestHerdAdvisoryRepository(
+      api: HerdAdvisoryApiClient(api: api, session: ranchAccess),
+    ),
+    selection: ranchSelection,
+  );
   final monitoringApi = config.isApiConfigured
       ? MonitoringApiClient(
           baseUri: config.apiBaseUri!,
@@ -125,6 +134,7 @@ Future<void> main() async {
       profileService: profileService,
       ranchSelection: ranchSelection,
       cattleService: cattleService,
+      herdAdvisoryService: herdAdvisoryService,
       monitoringService: monitoringService,
       alertService: alertService,
       onDispose: () {

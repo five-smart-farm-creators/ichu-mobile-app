@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Protected, localized ranch-advisory navigation and service composition for veterinarian access requests and manager review/direct grants, with selected-ranch authorization context.
 - Ranch-manager animal registration, detail correction, productive-stage change, and deactivation screens (EN/ES) that send version-checked writes, never retry, and report uncertain outcomes; app composition wiring is pending integration.
 - Version-checked, idempotent cloud-only alert acknowledgements with server timestamps, safe same-operation retries, conflict refresh, and explicit limits against implying clinical attendance, resolution, or Edge synchronization.
 - Immutable ranch alert contracts and real page envelopes with known workflow/type/severity metadata, captured/cloud-received times, stored acknowledgement fields, and server-bounded pagination/filter validation.

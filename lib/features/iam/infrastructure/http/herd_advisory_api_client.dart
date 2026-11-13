@@ -4,11 +4,7 @@ import '../http/authenticated_api_client.dart';
 
 /// Sends veterinarian advisory requests and authorized ranch advisory calls.
 final class HerdAdvisoryApiClient {
-  const HerdAdvisoryApiClient({
-    required AuthenticatedApiClient? api,
-    required AuthorizedRanchSession session,
-  }) : _api = api,
-       _session = session;
+  const HerdAdvisoryApiClient({required this._api, required this._session});
 
   final AuthenticatedApiClient? _api;
   final AuthorizedRanchSession _session;
@@ -47,13 +43,14 @@ final class HerdAdvisoryApiClient {
     DateTime? expiresAt,
   }) {
     final context = _requireContext(ranchId);
+    final optionalFields = <String, Object?>{};
+    if (scope != null) optionalFields['scope'] = scope;
+    if (expiresAt != null) {
+      optionalFields['expiresAt'] = expiresAt.toUtc().toIso8601String();
+    }
     return _requireApi().patchJson(
       'ranches/$ranchId/herd-advisories/$advisoryId',
-      <String, Object?>{
-        'decision': decision,
-        if (scope != null) 'scope': scope,
-        if (expiresAt != null) 'expiresAt': expiresAt.toUtc().toIso8601String(),
-      },
+      <String, Object?>{'decision': decision, ...optionalFields},
       tokenProvider: () => _tokenFor(context),
       isContextCurrent: () => _session.isCurrent(context),
     );

@@ -13,16 +13,19 @@ import 'package:ichu_mobile_app/features/cattle_information/presentation/pages/c
 import 'package:ichu_mobile_app/features/iam/application/facades/authorized_ranch_session.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/auth_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/authentication_lifecycle.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/herd_advisory_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/registration_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/professional_profile_service.dart';
 import 'package:ichu_mobile_app/features/iam/application/services/ranch_selection_service.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_failure.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/auth_user.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
+import 'package:ichu_mobile_app/features/iam/domain/model/herd_advisory.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/professional_profile.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/login_page.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/session_account_page.dart';
+import 'package:ichu_mobile_app/features/iam/presentation/pages/herd_advisory_page.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/alert_read_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
@@ -35,6 +38,7 @@ import 'support/fake_iam_repositories.dart';
 import 'support/fake_cattle_repository.dart';
 import 'support/fake_monitoring_repository.dart';
 import 'support/fake_alert_repository.dart';
+import 'support/fake_herd_advisory_repository.dart';
 import 'support/fake_registration_repositories.dart';
 import 'support/fake_professional_profile_repository.dart';
 import 'support/memory_language_preferences.dart';
@@ -57,6 +61,13 @@ const _ranch = RanchAccess(
   region: 'Cusco',
   district: 'Anta',
 );
+const _managedRanch = RanchAccess(
+  ranchId: '44444444-4444-4444-8444-444444444444',
+  scope: AccessScope.manage,
+  name: 'Managed ranch',
+  region: 'Cusco',
+  district: 'Anta',
+);
 
 Future<
   ({
@@ -70,6 +81,8 @@ Future<
     FakeProfessionalProfileRepository profiles,
     RanchSelectionService ranchSelection,
     CattleReadService cattleService,
+    HerdAdvisoryService herdAdvisoryService,
+    FakeHerdAdvisoryRepository herdAdvisories,
     FakeCattleRepository cattle,
     MonitoringReadService monitoringService,
     FakeMonitoringRepository monitoring,
@@ -111,6 +124,11 @@ pumpApp(
   );
   final cattle = FakeCattleRepository();
   final cattleService = CattleReadService(access: ranchAccess, cattle: cattle);
+  final herdAdvisories = FakeHerdAdvisoryRepository();
+  final herdAdvisoryService = HerdAdvisoryService(
+    advisories: herdAdvisories,
+    selection: ranchSelection,
+  );
   final monitoring = FakeMonitoringRepository();
   final monitoringService = MonitoringReadService(
     access: ranchAccess,
@@ -160,6 +178,7 @@ pumpApp(
       profileService: profileService,
       ranchSelection: ranchSelection,
       cattleService: cattleService,
+      herdAdvisoryService: herdAdvisoryService,
       monitoringService: monitoringService,
       alertService: alertService,
       initialRoute: initialRoute,
@@ -177,6 +196,8 @@ pumpApp(
     profiles: profiles,
     ranchSelection: ranchSelection,
     cattleService: cattleService,
+    herdAdvisoryService: herdAdvisoryService,
+    herdAdvisories: herdAdvisories,
     cattle: cattle,
     monitoringService: monitoringService,
     monitoring: monitoring,
@@ -210,6 +231,109 @@ void main() {
     final fixture = await pumpApp(tester, initialRoute: '/account/alerts');
     expect(find.byType(LoginPage), findsOneWidget);
     expect(fixture.alerts.calls, 0);
+  });
+  testWidgets('ranch advisory links require a validated session', (
+    tester,
+  ) async {
+    final fixture = await pumpApp(tester, initialRoute: '/account/advisories');
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(fixture.herdAdvisories.lookupCalls, 0);
+    expect(fixture.herdAdvisories.listCalls, 0);
+  });
+  testWidgets('advisory URL cannot select a ranch', (tester) async {
+    final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+    GoRouter.of(
+      tester.element(find.byType(SessionAccountPage)),
+    ).go('/account/advisories?ranchId=${_ranch.ranchId}');
+    await tester.pumpAndSettle();
+    expect(find.byType(HerdAdvisoryPage), findsOneWidget);
+    expect(fixture.ranchSelection.selectedRanch, isNull);
+    expect(fixture.herdAdvisories.listCalls, 0);
+  });
+  testWidgets('field operators cannot access ranch advisories', (tester) async {
+    final fixture = await pumpApp(
+      tester,
+      restored: true,
+      ranches: [_ranch],
+      account: const IamAccount(
+        id: '11111111-1111-4111-8111-111111111111',
+        email: 'user@example.test',
+        role: AccountRole.fieldOperator,
+        status: 'Active',
+      ),
+    );
+    expect(find.byKey(const Key('account-advisories')), findsNothing);
+    GoRouter.of(
+      tester.element(find.byType(SessionAccountPage)),
+    ).go('/account/advisories');
+    await tester.pumpAndSettle();
+    expect(find.byType(HerdAdvisoryPage), findsNothing);
+    expect(find.byType(SessionAccountPage), findsOneWidget);
+    expect(fixture.herdAdvisories.listCalls, 0);
+  });
+  testWidgets(
+    'manager can open advisory history only for the selected managed ranch',
+    (tester) async {
+      final fixture = await pumpApp(
+        tester,
+        restored: true,
+        ranches: const [_managedRanch],
+      );
+      const advisoryId = '55555555-5555-4555-8555-555555555555';
+      fixture.herdAdvisories.advisories = <HerdAdvisory>[
+        HerdAdvisory(
+          id: advisoryId,
+          veterinarianId: '66666666-6666-4666-8666-666666666666',
+          ranchId: _managedRanch.ranchId,
+          reason: 'Herd health review',
+          status: HerdAdvisoryStatus.pending,
+          scope: AccessScope.read,
+          requestedAt: DateTime.utc(2026, 11, 13),
+        ),
+      ];
+      expect(fixture.ranchSelection.select(_managedRanch.ranchId), isTrue);
+      await tester.pumpAndSettle();
+      final entry = find.byKey(const Key('account-advisories'));
+      await tester.ensureVisible(entry);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HerdAdvisoryPage), findsOneWidget);
+      expect(fixture.herdAdvisories.listCalls, 1);
+      expect(fixture.herdAdvisories.lastRanchId, _managedRanch.ranchId);
+      expect(find.byKey(const Key('advisory-veterinarian-id')), findsOneWidget);
+      expect(find.text('Grant read access'), findsOneWidget);
+      expect(find.text('Reject request'), findsOneWidget);
+    },
+  );
+  testWidgets('veterinarian advisory page does not expose manager actions', (
+    tester,
+  ) async {
+    const veterinarianAccount = IamAccount(
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'user@example.test',
+      role: AccountRole.veterinarian,
+      status: 'Active',
+    );
+    final fixture = await pumpApp(
+      tester,
+      restored: true,
+      ranches: [_ranch],
+      account: veterinarianAccount,
+    );
+    expect(fixture.ranchSelection.select(_ranch.ranchId), isTrue);
+    await tester.pumpAndSettle();
+    final entry = find.byKey(const Key('account-advisories'));
+    await tester.ensureVisible(entry);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HerdAdvisoryPage), findsOneWidget);
+    expect(find.byKey(const Key('advisory-access-code')), findsOneWidget);
+    expect(find.byKey(const Key('advisory-veterinarian-id')), findsNothing);
+    expect(find.text('Grant read access'), findsNothing);
+    expect(find.text('Reject request'), findsNothing);
+    expect(fixture.herdAdvisories.lastRanchId, _ranch.ranchId);
   });
   testWidgets('alert route query cannot choose a ranch', (tester) async {
     final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);

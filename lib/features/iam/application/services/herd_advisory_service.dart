@@ -8,12 +8,10 @@ import 'ranch_selection_service.dart';
 /// Coordinates veterinarian requests and ranch-scoped advisory management.
 final class HerdAdvisoryService {
   HerdAdvisoryService({
-    required HerdAdvisoryRepository advisories,
-    required RanchSelectionService selection,
+    required this._advisories,
+    required this._selection,
     DateTime Function()? now,
-  }) : _advisories = advisories,
-       _selection = selection,
-       _now = now ?? DateTime.now;
+  }) : _now = now ?? DateTime.now;
 
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
@@ -49,7 +47,7 @@ final class HerdAdvisoryService {
     );
   }
 
-  Future<List<HerdAdvisory>> advisoriesForSelectedRanch() {
+  Future<List<HerdAdvisory>> advisoriesForSelectedRanch() async {
     final ranchId = _selectedRanchId();
     return _advisories.advisoriesForRanch(ranchId);
   }
@@ -59,7 +57,7 @@ final class HerdAdvisoryService {
     required HerdAdvisoryDecision decision,
     AccessScope? scope,
     DateTime? expiresAt,
-  }) {
+  }) async {
     final ranchId = _selectedRanchId();
     if (!_isNonzeroUuid(advisoryId)) {
       throw const HerdAdvisoryFailure(HerdAdvisoryFailureCode.invalidRequest);
@@ -67,7 +65,7 @@ final class HerdAdvisoryService {
     if (decision == HerdAdvisoryDecision.grant) {
       if (!_isAdvisoryScope(scope) ||
           expiresAt == null ||
-          expiresAt <= _now()) {
+          !expiresAt.isAfter(_now())) {
         throw const HerdAdvisoryFailure(HerdAdvisoryFailureCode.invalidRequest);
       }
     } else if (scope != null || expiresAt != null) {
@@ -86,11 +84,11 @@ final class HerdAdvisoryService {
     required String veterinarianId,
     required AccessScope scope,
     required DateTime expiresAt,
-  }) {
+  }) async {
     final ranchId = _selectedRanchId();
     if (!_isNonzeroUuid(veterinarianId) ||
         !_isAdvisoryScope(scope) ||
-        expiresAt <= _now()) {
+        !expiresAt.isAfter(_now())) {
       throw const HerdAdvisoryFailure(HerdAdvisoryFailureCode.invalidRequest);
     }
     return _advisories.grantDirectly(
