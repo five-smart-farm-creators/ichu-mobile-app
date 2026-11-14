@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/model/field_record.dart';
+import '../../domain/model/field_record_sync.dart';
 import '../../domain/repositories/field_record_repository.dart';
 
 /// Stores pending field events and cattle choices in account/ranch-scoped keys.
@@ -28,6 +29,67 @@ final class SharedPreferencesFieldRecordRepository
     required this._readString,
     required this._writeString,
   });
+
+  @override
+  Future<List<FieldRecordSyncResult>> readSyncIssues({
+    required String accountId,
+    required String ranchId,
+  }) => _withScope(accountId, ranchId, (key) async {
+    return List<FieldRecordSyncResult>.unmodifiable(
+      (await _readData(key)).syncIssues,
+    );
+  });
+
+  @override
+  Future<void> applySyncResults({
+    required String accountId,
+    required String ranchId,
+    required List<FieldRecord> submitted,
+    required List<FieldRecordSyncResult> results,
+  }) {
+    final batch = List<FieldRecord>.of(submitted);
+    final decisions = List<FieldRecordSyncResult>.of(results);
+    validateFieldRecordSyncResults(batch, decisions);
+    if (batch.any((record) => !_sameId(record.ranchId, ranchId))) {
+      throw ArgumentError('The batch belongs to a different ranch.');
+    }
+    return _withScope(accountId, ranchId, (key) async {
+      final data = await _readData(key);
+      final pending = {
+        for (final record in data.records) record.operationId: record,
+      };
+      for (final record in batch) {
+        final stored = pending[record.operationId];
+        if (stored != null && stored != record) {
+          throw StateError('A submitted record has different stored content.');
+        }
+      }
+      final issues = {
+        for (final issue in data.syncIssues) issue.operationId: issue,
+      };
+      for (final result in decisions) {
+        final id = result.operationId.toLowerCase();
+        if (result.confirmed) {
+          pending.remove(id);
+          issues.remove(id);
+        } else if (pending.containsKey(id)) {
+          issues[id] = FieldRecordSyncResult(
+            operationId: id,
+            status: result.status,
+            reason: result.reason,
+          );
+        }
+      }
+      await _writeData(
+        key,
+        _FieldRecordData(
+          records: pending.values.toList(growable: false),
+          cattleOptions: data.cattleOptions,
+          syncIssues: issues.values.toList(growable: false),
+        ),
+      );
+    });
+  }
 
   @override
   Future<List<FieldRecord>> readPending({
@@ -60,6 +122,7 @@ final class SharedPreferencesFieldRecordRepository
     final updated = _FieldRecordData(
       records: <FieldRecord>[record, ...data.records],
       cattleOptions: data.cattleOptions,
+      syncIssues: data.syncIssues,
     );
     await _writeData(key, updated);
   });
@@ -95,6 +158,7 @@ final class SharedPreferencesFieldRecordRepository
       _FieldRecordData(
         records: data.records,
         cattleOptions: byId.values.toList(growable: false),
+        syncIssues: data.syncIssues,
       ),
     );
   });
@@ -132,7 +196,26 @@ final class SharedPreferencesFieldRecordRepository
           .toList(growable: false);
       _ensureUnique(records.map((record) => record.operationId));
       _ensureUnique(options.map((option) => option.cattleId));
-      return _FieldRecordData(records: records, cattleOptions: options);
+      // The optional field preserves compatibility with existing v1 queues.
+      final rawIssues = decoded['syncIssues'] ?? <dynamic>[];
+      if (rawIssues is! List<dynamic>) {
+        throw const FormatException('Invalid stored synchronization issues.');
+      }
+      final issues = rawIssues.map(_decodeSyncIssue).toList(growable: false);
+      _ensureUnique(issues.map((issue) => issue.operationId));
+      if (issues.any(
+        (issue) =>
+            !records.any((record) => record.operationId == issue.operationId),
+      )) {
+        throw const FormatException(
+          'A synchronization issue has no pending record.',
+        );
+      }
+      return _FieldRecordData(
+        records: records,
+        cattleOptions: options,
+        syncIssues: issues,
+      );
     } on FormatException {
       rethrow;
     } catch (_) {
@@ -144,12 +227,40 @@ final class SharedPreferencesFieldRecordRepository
     key,
     jsonEncode(<String, Object?>{
       'schemaVersion': _schemaVersion,
+      'syncIssues': data.syncIssues
+          .map(
+            (issue) => <String, Object?>{
+              'operationId': issue.operationId,
+              'status': issue.status.name,
+              'reason': issue.reason,
+            },
+          )
+          .toList(growable: false),
       'records': data.records.map(_encodeRecord).toList(growable: false),
       'cattleOptions': data.cattleOptions
           .map(_encodeCattleOption)
           .toList(growable: false),
     }),
   );
+
+  FieldRecordSyncResult _decodeSyncIssue(Object? value) {
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('Invalid stored synchronization issue.');
+    }
+    final id = _requiredString(value, 'operationId');
+    final status = FieldRecordSyncStatus.values.byName(
+      _requiredString(value, 'status'),
+    );
+    final result = FieldRecordSyncResult(
+      operationId: id,
+      status: status,
+      reason: _optionalString(value, 'reason'),
+    );
+    if (!_isUuid(id) || result.confirmed) {
+      throw const FormatException('Invalid pending synchronization decision.');
+    }
+    return result;
+  }
 
   Map<String, Object?> _encodeRecord(FieldRecord record) => <String, Object?>{
     'operationId': record.operationId,
@@ -249,12 +360,18 @@ final class SharedPreferencesFieldRecordRepository
 }
 
 final class _FieldRecordData {
-  const _FieldRecordData({required this.records, required this.cattleOptions});
+  const _FieldRecordData({
+    required this.records,
+    required this.cattleOptions,
+    this.syncIssues = const [],
+  });
 
   const _FieldRecordData.empty()
     : records = const <FieldRecord>[],
+      syncIssues = const <FieldRecordSyncResult>[],
       cattleOptions = const <FieldCattleOption>[];
 
   final List<FieldRecord> records;
   final List<FieldCattleOption> cattleOptions;
+  final List<FieldRecordSyncResult> syncIssues;
 }
