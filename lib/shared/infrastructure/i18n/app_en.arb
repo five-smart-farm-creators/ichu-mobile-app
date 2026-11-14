@@ -452,5 +452,55 @@
   "monitoringHistoryValueInvalid": "Invalid capture",
   "monitoringHistoryOldestAvailable": "Oldest available capture: {date}",
   "@monitoringHistoryOldestAvailable": { "description": "Oldest capture timestamp reported by the server; this is not a retention guarantee.", "placeholders": { "date": { "type": "String" } } },
-  "monitoringErrorHistoryQuery": "The history period or page was not accepted. Review the selected dates and try again."
+  "monitoringErrorHistoryQuery": "The history period or page was not accepted. Review the selected dates and try again.",
+  "fieldRecordTitle": "Field records",
+  "fieldRecordLead": "Records are saved on this device for this account and ranch. They are not sent to the server yet.",
+  "fieldRecordBack": "Back to account",
+  "fieldRecordDraftCleared": "The account or ranch changed. Unsaved form details were cleared; saved records remain with their original account and ranch.",
+  "fieldRecordContextUnavailable": "Select an authorized ranch to load its local records. Signing out or switching accounts does not remove saved records.",
+  "fieldRecordCreateTitle": "Record a field event",
+  "fieldRecordPermissionRequired": "The current server-issued ranch access does not allow recording field events. Saved records remain visible.",
+  "fieldRecordCattleTag": "Cattle ear tag",
+  "fieldRecordCattleTagHelp": "Search the exact ear tag. Previously loaded cattle remain available offline.",
+  "fieldRecordCattleTagInvalid": "Enter an ear tag of 1 to 30 characters.",
+  "fieldRecordFindCattle": "Find cattle",
+  "fieldRecordCattleLoadError": "The cattle list could not be verified. Try again before saving a field record.",
+  "fieldRecordCattleNotFound": "No animal with this exact ear tag was found in the selected ranch.",
+  "fieldRecordCattleOfflineHelp": "To record offline, first load cattle by exact ear tag while connected. Loaded cattle choices are saved for this account and ranch.",
+  "fieldRecordCattleRequired": "Find an animal record before saving this event.",
+  "fieldRecordSelectedCattle": "Selected cattle: {earTag}",
+  "@fieldRecordSelectedCattle": {
+    "placeholders": {
+      "earTag": { "type": "String" }
+    }
+  },
+  "fieldRecordType": "Event type",
+  "fieldRecordTypeHealthEvent": "Health event",
+  "fieldRecordTypeBirth": "Birth",
+  "fieldRecordTypeNaturalMating": "Natural mating",
+  "fieldRecordTypeAbortion": "Abortion",
+  "fieldRecordTypeHeatObserved": "Heat observed",
+  "fieldRecordOccurredAt": "Date and time observed",
+  "fieldRecordChooseDate": "Choose event date",
+  "fieldRecordChooseTime": "Choose event time",
+  "fieldRecordFutureDate": "Event time cannot be more than five minutes in the future.",
+  "fieldRecordSireReference": "Sire reference (optional)",
+  "fieldRecordObservation": "Observation (optional)",
+  "fieldRecordSave": "Save offline",
+  "fieldRecordSaving": "Saving…",
+  "fieldRecordSaveInProgress": "A field record is already being saved. Wait for it to finish before saving another.",
+  "fieldRecordSaved": "Record saved on this device. It has not been sent to the server.",
+  "fieldRecordSavedPreviousContext": "The record was saved and remains associated with the account and ranch that were active when you saved it.",
+  "fieldRecordInvalid": "Review the event details and try again.",
+  "fieldRecordStorageError": "Local storage could not confirm the result. ICHU did not remove any pending records.",
+  "fieldRecordPendingTitle": "Saved on this device",
+  "fieldRecordPendingLead": "These records are local and have not been sent to the backend.",
+  "fieldRecordEmpty": "No field records are saved for this ranch.",
+  "fieldRecordPendingAt": "Observed {occurredAt}",
+  "@fieldRecordPendingAt": {
+    "placeholders": {
+      "occurredAt": { "type": "String" }
+    }
+  },
+  "fieldRecordRetry": "Try again"
 }

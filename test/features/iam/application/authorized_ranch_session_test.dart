@@ -55,6 +55,7 @@ void main() {
         expect(harness.selection.select(_ranchA), isTrue);
 
         final first = facade.context!;
+        expect(first.accountId, '33333333-3333-4333-8333-333333333333');
         expect(first.ranchId, _ranchA);
         expect(first.ranchName, 'Ranch $_ranchA');
         expect(facade.isCurrent(first), isTrue);
