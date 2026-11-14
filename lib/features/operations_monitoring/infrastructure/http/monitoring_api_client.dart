@@ -14,6 +14,7 @@ import '../../domain/repositories/field_record_sync_repository.dart';
 import '../../domain/model/ranch_alert.dart';
 import '../../domain/model/monitoring_failure.dart';
 import '../../domain/model/telemetry_history_query.dart';
+import '../../domain/model/water_history_query.dart';
 
 /// Sends authorized ranch-scoped Operations Monitoring requests.
 final class MonitoringApiClient {
@@ -137,7 +138,7 @@ final class MonitoringApiClient {
         'page': query.page.toString(),
         'pageSize': query.pageSize.toString(),
       },
-      isTelemetryHistory: true,
+      isHistoryQuery: true,
     );
   }
 
@@ -161,6 +162,50 @@ final class MonitoringApiClient {
       'ranches/$ranchId/alerts',
       queryParameters: queryParameters,
       isAlertList: true,
+    );
+  }
+
+  Future<Object?> waterers(String ranchId) async {
+    _validateRanchId(ranchId);
+    return _get(
+      _requireContext(ranchId),
+      'ranches/$ranchId/water-troughs/status',
+    );
+  }
+
+  Future<Object?> waterer(String ranchId, String waterTroughId) async {
+    _validateRanchId(ranchId);
+    if (!_isNonzeroUuid(waterTroughId)) {
+      throw const MonitoringFailure(MonitoringFailureCode.notFound);
+    }
+    return _get(
+      _requireContext(ranchId),
+      'ranches/$ranchId/water-troughs/$waterTroughId/status',
+    );
+  }
+
+  Future<Object?> waterHistory(
+    String ranchId,
+    String controllerId,
+    WaterHistoryQuery query,
+  ) async {
+    _validateRanchId(ranchId);
+    if (!_isNonzeroUuid(controllerId)) {
+      throw const MonitoringFailure(MonitoringFailureCode.notFound);
+    }
+    if (!query.isValid) {
+      throw const MonitoringFailure(MonitoringFailureCode.invalidHistoryQuery);
+    }
+    return _get(
+      _requireContext(ranchId),
+      'water-controllers/$controllerId/readings',
+      queryParameters: {
+        'from': query.from.toUtc().toIso8601String(),
+        'to': query.to.toUtc().toIso8601String(),
+        'page': query.page.toString(),
+        'pageSize': query.pageSize.toString(),
+      },
+      isHistoryQuery: true,
     );
   }
 
@@ -204,7 +249,7 @@ final class MonitoringApiClient {
     String path, {
     Map<String, String>? queryParameters,
     bool isAlertList = false,
-    bool isTelemetryHistory = false,
+    bool isHistoryQuery = false,
   }) async {
     final response = await _requestJson(
       context,
@@ -216,7 +261,7 @@ final class MonitoringApiClient {
       throw _failureForStatus(
         response.statusCode,
         isAlertList: isAlertList,
-        isTelemetryHistory: isTelemetryHistory,
+        isHistoryQuery: isHistoryQuery,
       );
     }
     final payload = response.payload;
@@ -438,7 +483,7 @@ final class MonitoringApiClient {
   MonitoringFailure _failureForStatus(
     int statusCode, {
     bool isAlertList = false,
-    bool isTelemetryHistory = false,
+    bool isHistoryQuery = false,
     bool isAcknowledgement = false,
   }) => switch (statusCode) {
     400 when isAlertList => const MonitoringFailure(
@@ -447,7 +492,7 @@ final class MonitoringApiClient {
     400 when isAcknowledgement => const MonitoringFailure(
       MonitoringFailureCode.invalidAcknowledgement,
     ),
-    400 when isTelemetryHistory => const MonitoringFailure(
+    400 when isHistoryQuery => const MonitoringFailure(
       MonitoringFailureCode.invalidHistoryQuery,
     ),
     400 => const MonitoringFailure(MonitoringFailureCode.unknown),

@@ -32,6 +32,8 @@ import 'features/operations_monitoring/presentation/pages/ranch_alerts_page.dart
 import 'features/operations_monitoring/presentation/pages/edge_alerts_page.dart';
 import 'features/operations_monitoring/domain/repositories/field_cattle_directory.dart';
 import 'features/operations_monitoring/presentation/pages/field_records_page.dart';
+import 'features/operations_monitoring/application/services/waterer_read_service.dart';
+import 'features/operations_monitoring/presentation/pages/waterers_page.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/i18n/generated/app_localizations.dart';
 
@@ -50,6 +52,7 @@ final class IchuApp extends StatefulWidget {
     required this.monitoringService,
     required this.alertService,
     required this.edgeAlertService,
+    required this.watererService,
     required this.fieldRecordService,
     required this.fieldCattleDirectory,
     this.initialRoute = '/',
@@ -67,6 +70,7 @@ final class IchuApp extends StatefulWidget {
   final MonitoringReadService monitoringService;
   final AlertReadService alertService;
   final EdgeAlertReadService edgeAlertService;
+  final WatererReadService watererService;
   final FieldRecordService fieldRecordService;
   final FieldCattleDirectory fieldCattleDirectory;
   final String initialRoute;
@@ -98,6 +102,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
         oldWidget.monitoringService != widget.monitoringService ||
         oldWidget.alertService != widget.alertService ||
         oldWidget.edgeAlertService != widget.edgeAlertService ||
+        oldWidget.watererService != widget.watererService ||
         oldWidget.fieldRecordService != widget.fieldRecordService ||
         oldWidget.fieldCattleDirectory != widget.fieldCattleDirectory) {
       _router.dispose();
@@ -108,6 +113,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    widget.watererService.setActive(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed &&
         widget.authentication.status == SessionStatus.authenticated) {
       unawaited(widget.authentication.refresh());
@@ -179,6 +185,19 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
         return '/account/ranches';
       }
       if (signedIn &&
+          (path == '/account/waterers' ||
+              path.startsWith('/account/waterers/'))) {
+        final selected = widget.ranchSelection.selectedRanch;
+        if (selected == null || !widget.watererService.hasContext) {
+          return '/account/ranches';
+        }
+        final routeRanch = state.pathParameters['ranchId'];
+        if (routeRanch != null &&
+            routeRanch.toLowerCase() != selected.ranchId.toLowerCase()) {
+          return '/account/waterers';
+        }
+      }
+      if (signedIn &&
           path == '/account/field-records' &&
           (widget.ranchSelection.selectedRanch == null ||
               widget.fieldRecordService.context == null)) {
@@ -234,10 +253,47 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           onOpenAnimals: () => _router.push('/account/animals'),
           onOpenAlerts: () => _router.push('/account/alerts'),
           onOpenEdgeAlerts: () => _router.push('/account/edge-alerts'),
+          onOpenWaterers: () {
+            widget.watererService.clear();
+            _router.go('/account/waterers');
+          },
           onOpenFieldRecords: () => _router.push('/account/field-records'),
           onOpenAdvisories: () => _router.push('/account/advisories'),
         ),
         routes: [
+          GoRoute(
+            path: 'waterers',
+            builder: (context, state) => WaterersPage(
+              language: widget.language,
+              service: widget.watererService,
+              onBack: () {
+                widget.watererService.clear();
+                _router.go('/account');
+              },
+              onOpenRanches: () => _router.go('/account/ranches'),
+              onOpenDetails: (id) {
+                final ranchId = widget.watererService.ranchId;
+                if (ranchId == null) return;
+                _router.go(
+                  '/account/waterers/${Uri.encodeComponent(ranchId)}/${Uri.encodeComponent(id)}',
+                );
+              },
+            ),
+          ),
+          GoRoute(
+            path: 'waterers/:ranchId/:waterTroughId',
+            builder: (context, state) => WaterersPage(
+              language: widget.language,
+              service: widget.watererService,
+              waterTroughId: state.pathParameters['waterTroughId']!,
+              ranchId: state.pathParameters['ranchId']!,
+              onBack: () {
+                widget.watererService.clear();
+                _router.go('/account/waterers');
+              },
+              onOpenRanches: () => _router.go('/account/ranches'),
+            ),
+          ),
           GoRoute(
             path: 'advisories',
             builder: (context, state) => HerdAdvisoryPage(

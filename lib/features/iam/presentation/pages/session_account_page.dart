@@ -22,6 +22,7 @@ final class SessionAccountPage extends StatelessWidget {
     this.onOpenAnimals,
     this.onOpenAlerts,
     this.onOpenEdgeAlerts,
+    this.onOpenWaterers,
     this.onOpenFieldRecords,
   });
 
@@ -35,6 +36,7 @@ final class SessionAccountPage extends StatelessWidget {
   final VoidCallback? onOpenAnimals;
   final VoidCallback? onOpenAlerts;
   final VoidCallback? onOpenEdgeAlerts;
+  final VoidCallback? onOpenWaterers;
   final VoidCallback? onOpenFieldRecords;
 
   @override
@@ -190,6 +192,17 @@ final class SessionAccountPage extends StatelessWidget {
                     : null,
                 icon: const Icon(Icons.assignment_outlined),
                 label: Text(strings.fieldRecordTitle),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (onOpenWaterers != null) ...[
+              OutlinedButton.icon(
+                key: const Key('account-waterers'),
+                onPressed: ranchSelection.selectedRanch != null
+                    ? onOpenWaterers
+                    : null,
+                icon: const Icon(Icons.water_drop_outlined),
+                label: Text(strings.watererTitle),
               ),
               const SizedBox(height: 12),
             ],

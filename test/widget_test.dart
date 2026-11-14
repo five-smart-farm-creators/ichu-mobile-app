@@ -40,6 +40,8 @@ import 'package:ichu_mobile_app/features/operations_monitoring/infrastructure/ad
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/ranch_alerts_page.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/edge_alerts_page.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/application/services/waterer_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/waterers_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
 import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 
@@ -54,6 +56,7 @@ import 'support/fake_registration_repositories.dart';
 import 'support/fake_professional_profile_repository.dart';
 import 'support/memory_language_preferences.dart';
 import 'support/memory_field_record_repository.dart';
+import 'support/waterer_test_support.dart';
 
 const _user = AuthUser(
   uid: 'widget-user',
@@ -104,6 +107,8 @@ Future<
     FakeAlertRepository alerts,
     EdgeAlertReadService edgeAlertService,
     FakeEdgeAlertRepository edgeAlerts,
+    WatererReadService watererService,
+    FakeWatererRepository waterers,
     FieldRecordService fieldRecordService,
     MemoryFieldRecordRepository fieldRecordRepository,
   })
@@ -172,6 +177,11 @@ pumpApp(
     access: ranchAccess,
     edgeAlerts: edgeAlerts,
   );
+  final waterers = FakeWatererRepository();
+  final watererService = WatererReadService(
+    access: ranchAccess,
+    waterers: waterers,
+  );
   final profiles = FakeProfessionalProfileRepository()..account = account;
   final profileService = ProfessionalProfileService(
     session: auth,
@@ -192,6 +202,7 @@ pumpApp(
     accounts: registrationAccounts,
   );
   addTearDown(() async {
+    watererService.dispose();
     edgeAlertService.dispose();
     alertService.dispose();
     fieldRecordService.dispose();
@@ -222,6 +233,7 @@ pumpApp(
       monitoringService: monitoringService,
       alertService: alertService,
       edgeAlertService: edgeAlertService,
+      watererService: watererService,
       fieldRecordService: fieldRecordService,
       fieldCattleDirectory: fieldCattleDirectory,
       initialRoute: initialRoute,
@@ -249,6 +261,8 @@ pumpApp(
     alertService: alertService,
     edgeAlertService: edgeAlertService,
     edgeAlerts: edgeAlerts,
+    watererService: watererService,
+    waterers: waterers,
     alerts: alerts,
     fieldRecordService: fieldRecordService,
     fieldRecordRepository: fieldRecordRepository,
@@ -276,6 +290,66 @@ TextField passwordField(WidgetTester tester) => tester.widget<TextField>(
 );
 
 void main() {
+  testWidgets(
+    'water trough deep links require an authenticated selected ranch',
+    (tester) async {
+      final fixture = await pumpApp(
+        tester,
+        initialRoute: '/account/waterers/${_ranch.ranchId}/$watererId',
+      );
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(fixture.waterers.detailRequests, isEmpty);
+    },
+  );
+
+  testWidgets('water trough URLs cannot choose a ranch', (tester) async {
+    final fixture = await pumpApp(
+      tester,
+      restored: true,
+      ranches: const [_ranch],
+    );
+    GoRouter.of(
+      tester.element(find.byType(SessionAccountPage)),
+    ).go('/account/waterers/${_ranch.ranchId}/$watererId');
+    await tester.pumpAndSettle();
+    expect(fixture.ranchSelection.selectedRanch, isNull);
+    expect(find.byType(WaterersPage), findsNothing);
+    expect(fixture.waterers.detailRequests, isEmpty);
+  });
+
+  testWidgets('opens trough details and fences routes from another ranch', (
+    tester,
+  ) async {
+    final fixture = await pumpApp(
+      tester,
+      restored: true,
+      ranches: const [_ranch, _managedRanch],
+    );
+    fixture.ranchSelection.select(_ranch.ranchId);
+    await tester.pumpAndSettle();
+    final button = find.byKey(const Key('account-waterers'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(fixture.waterers.listRequests.single, _ranch.ranchId);
+    final detailButton = find.text('View details');
+    await tester.ensureVisible(detailButton);
+    await tester.tap(detailButton);
+    await tester.pumpAndSettle();
+    expect(fixture.waterers.detailRequests.single.id, watererId);
+    expect(fixture.watererService.detail, isNotNull);
+    fixture.ranchSelection.select(_managedRanch.ranchId);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<WaterersPage>(find.byType(WaterersPage)).waterTroughId,
+      isNull,
+    );
+    expect(fixture.waterers.listRequests.last, _managedRanch.ranchId);
+    expect(fixture.watererService.detail, isNull);
+    expect(fixture.watererService.history, isNull);
+    expect(fixture.waterers.detailRequests, hasLength(1));
+  });
+
   testWidgets('field record deep links require a validated session', (
     tester,
   ) async {
