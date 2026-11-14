@@ -13,11 +13,14 @@ import '../services/ranch_selection_service.dart';
 /// Minimal application-facing description of the currently selected ranch.
 final class AuthorizedRanchContext {
   const AuthorizedRanchContext._({
+    required this.accountId,
     required this.ranchId,
     required this.ranchName,
     required this.canManage,
   });
 
+  /// Stable server account identifier for account-scoped local data.
+  final String accountId;
   final String ranchId;
   final String ranchName;
 
@@ -225,6 +228,7 @@ final class AuthorizedRanchSession extends ChangeNotifier {
     final grant = _grant;
     if (grant == null) return;
     _context = AuthorizedRanchContext._(
+      accountId: _signature!.accountId,
       ranchId: grant.ranchId,
       ranchName: grant.name,
       canManage: grant.scope == AccessScope.manage,
