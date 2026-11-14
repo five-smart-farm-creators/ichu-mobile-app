@@ -30,10 +30,12 @@ import 'features/iam/infrastructure/repositories/iam_account_registration_reposi
 import 'features/iam/infrastructure/repositories/rest_herd_advisory_repository.dart';
 import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'features/operations_monitoring/application/services/alert_read_service.dart';
+import 'features/operations_monitoring/application/services/edge_alert_read_service.dart';
 import 'features/operations_monitoring/application/services/field_record_service.dart';
 import 'features/operations_monitoring/infrastructure/http/monitoring_api_client.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_monitoring_repository.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_alert_repository.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_edge_alert_repository.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_field_record_sync_repository.dart';
 import 'features/operations_monitoring/infrastructure/adapters/field_cattle_directory_adapter.dart';
 import 'features/operations_monitoring/infrastructure/preferences/shared_preferences_field_record_repository.dart';
@@ -142,9 +144,14 @@ Future<void> main() async {
     ),
     syncRepository: RestFieldRecordSyncRepository(api: monitoringApi),
   );
+  final alertRepository = RestAlertRepository(api: monitoringApi);
   final alertService = AlertReadService(
     access: ranchAccess,
-    alerts: RestAlertRepository(api: monitoringApi),
+    alerts: alertRepository,
+  );
+  final edgeAlertService = EdgeAlertReadService(
+    access: ranchAccess,
+    edgeAlerts: RestEdgeAlertRepository(alerts: alertRepository),
   );
   runApp(
     IchuApp(
@@ -158,9 +165,11 @@ Future<void> main() async {
       cattleManagementService: cattleManagementService,
       monitoringService: monitoringService,
       alertService: alertService,
+      edgeAlertService: edgeAlertService,
       fieldRecordService: fieldRecordService,
       fieldCattleDirectory: fieldCattleDirectory,
       onDispose: () {
+        edgeAlertService.dispose();
         alertService.dispose();
         fieldRecordService.dispose();
         monitoringService.dispose();

@@ -31,12 +31,15 @@ import 'package:ichu_mobile_app/features/iam/presentation/pages/herd_advisory_pa
 import 'package:ichu_mobile_app/shared/infrastructure/i18n/generated/app_localizations.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/alert_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/application/services/edge_alert_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/edge_alert.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/field_record_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/field_records_page.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/infrastructure/adapters/field_cattle_directory_adapter.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/ranch_alerts_page.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/edge_alerts_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
 import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 
@@ -45,6 +48,7 @@ import 'support/fake_cattle_command_repository.dart';
 import 'support/fake_cattle_repository.dart';
 import 'support/fake_monitoring_repository.dart';
 import 'support/fake_alert_repository.dart';
+import 'support/fake_edge_alert_repository.dart';
 import 'support/fake_herd_advisory_repository.dart';
 import 'support/fake_registration_repositories.dart';
 import 'support/fake_professional_profile_repository.dart';
@@ -98,6 +102,8 @@ Future<
     FakeMonitoringRepository monitoring,
     AlertReadService alertService,
     FakeAlertRepository alerts,
+    EdgeAlertReadService edgeAlertService,
+    FakeEdgeAlertRepository edgeAlerts,
     FieldRecordService fieldRecordService,
     MemoryFieldRecordRepository fieldRecordRepository,
   })
@@ -161,6 +167,11 @@ pumpApp(
   );
   final alerts = FakeAlertRepository();
   final alertService = AlertReadService(access: ranchAccess, alerts: alerts);
+  final edgeAlerts = FakeEdgeAlertRepository();
+  final edgeAlertService = EdgeAlertReadService(
+    access: ranchAccess,
+    edgeAlerts: edgeAlerts,
+  );
   final profiles = FakeProfessionalProfileRepository()..account = account;
   final profileService = ProfessionalProfileService(
     session: auth,
@@ -181,6 +192,7 @@ pumpApp(
     accounts: registrationAccounts,
   );
   addTearDown(() async {
+    edgeAlertService.dispose();
     alertService.dispose();
     fieldRecordService.dispose();
     monitoringService.dispose();
@@ -209,6 +221,7 @@ pumpApp(
       cattleManagementService: cattleManagementService,
       monitoringService: monitoringService,
       alertService: alertService,
+      edgeAlertService: edgeAlertService,
       fieldRecordService: fieldRecordService,
       fieldCattleDirectory: fieldCattleDirectory,
       initialRoute: initialRoute,
@@ -234,6 +247,8 @@ pumpApp(
     monitoringService: monitoringService,
     monitoring: monitoring,
     alertService: alertService,
+    edgeAlertService: edgeAlertService,
+    edgeAlerts: edgeAlerts,
     alerts: alerts,
     fieldRecordService: fieldRecordService,
     fieldRecordRepository: fieldRecordRepository,
@@ -380,6 +395,11 @@ void main() {
     expect(find.byType(LoginPage), findsOneWidget);
     expect(fixture.alerts.calls, 0);
   });
+  testWidgets('Edge alert links require a validated session', (tester) async {
+    final fixture = await pumpApp(tester, initialRoute: '/account/edge-alerts');
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(fixture.edgeAlerts.requests, isEmpty);
+  });
   testWidgets('ranch advisory links require a validated session', (
     tester,
   ) async {
@@ -492,6 +512,37 @@ void main() {
     expect(find.text('Authorized ranches'), findsOneWidget);
     expect(fixture.ranchSelection.selectedRanch, isNull);
     expect(fixture.alerts.calls, 0);
+  });
+  testWidgets('Edge alert route query cannot choose a ranch', (tester) async {
+    final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+    GoRouter.of(
+      tester.element(find.byType(SessionAccountPage)),
+    ).go('/account/edge-alerts?ranchId=${_ranch.ranchId}');
+    await tester.pumpAndSettle();
+    expect(find.text('Authorized ranches'), findsOneWidget);
+    expect(fixture.ranchSelection.selectedRanch, isNull);
+    expect(fixture.edgeAlerts.requests, isEmpty);
+  });
+  testWidgets('the Edge alert link reads only the selected ranch', (
+    tester,
+  ) async {
+    final fixture = await pumpApp(tester, restored: true, ranches: [_ranch]);
+    fixture.edgeAlerts.pageResult = EdgeAlertPage(
+      page: 1,
+      pageSize: 20,
+      totalCount: 0,
+      items: const <EdgeAlert>[],
+    );
+    expect(fixture.ranchSelection.select(_ranch.ranchId), isTrue);
+    await tester.pumpAndSettle();
+
+    final entry = find.byKey(const Key('account-edge-alerts'));
+    await tester.ensureVisible(entry);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(EdgeAlertsPage), findsOneWidget);
+    expect(fixture.edgeAlerts.requests.single.ranchId, _ranch.ranchId);
   });
   for (final role in AccountRole.values) {
     testWidgets(

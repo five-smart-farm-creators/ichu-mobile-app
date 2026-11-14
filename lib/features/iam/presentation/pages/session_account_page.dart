@@ -21,6 +21,7 @@ final class SessionAccountPage extends StatelessWidget {
     required this.onOpenAdvisories,
     this.onOpenAnimals,
     this.onOpenAlerts,
+    this.onOpenEdgeAlerts,
     this.onOpenFieldRecords,
   });
 
@@ -33,6 +34,7 @@ final class SessionAccountPage extends StatelessWidget {
   final VoidCallback onOpenAdvisories;
   final VoidCallback? onOpenAnimals;
   final VoidCallback? onOpenAlerts;
+  final VoidCallback? onOpenEdgeAlerts;
   final VoidCallback? onOpenFieldRecords;
 
   @override
@@ -166,6 +168,17 @@ final class SessionAccountPage extends StatelessWidget {
                     : null,
                 icon: const Icon(Icons.notifications_active_outlined),
                 label: Text(strings.alertTitle),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (onOpenEdgeAlerts != null) ...[
+              OutlinedButton.icon(
+                key: const Key('account-edge-alerts'),
+                onPressed: ranchSelection.selectedRanch != null
+                    ? onOpenEdgeAlerts
+                    : null,
+                icon: const Icon(Icons.sensors_outlined),
+                label: Text(strings.edgeAlertTitle),
               ),
               const SizedBox(height: 12),
             ],

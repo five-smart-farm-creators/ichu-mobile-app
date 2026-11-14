@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented the report-aligned field-focused mobile scope, sequential delivery boundaries, profile-write safety prerequisite, read-only profile checks, and current live/native validation limits.
 - Documented authorized ranch selection, discarded access credentials, conservative expiration handling, session-only context ownership, and verified selector/native regression checks with explicit live-integration limits.
 - Added explicit, ranch-scoped synchronization for pending field records with idempotent retries and retained review decisions.
+- Added a localized, paginated ranch view of synchronized Edge Gateway alerts without adding a separate transport or alert-mutation flow.
 
 ### Changed
 - Wired offline field records into account navigation and app composition, with exact cattle lookup scoped to the currently authorized managed ranch.

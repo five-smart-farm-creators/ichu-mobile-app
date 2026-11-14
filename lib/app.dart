@@ -26,8 +26,10 @@ import 'features/iam/presentation/pages/session_account_page.dart';
 import 'features/iam/presentation/pages/herd_advisory_page.dart';
 import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'features/operations_monitoring/application/services/alert_read_service.dart';
+import 'features/operations_monitoring/application/services/edge_alert_read_service.dart';
 import 'features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
 import 'features/operations_monitoring/presentation/pages/ranch_alerts_page.dart';
+import 'features/operations_monitoring/presentation/pages/edge_alerts_page.dart';
 import 'features/operations_monitoring/domain/repositories/field_cattle_directory.dart';
 import 'features/operations_monitoring/presentation/pages/field_records_page.dart';
 import 'shared/application/services/language_service.dart';
@@ -47,6 +49,7 @@ final class IchuApp extends StatefulWidget {
     required this.cattleManagementService,
     required this.monitoringService,
     required this.alertService,
+    required this.edgeAlertService,
     required this.fieldRecordService,
     required this.fieldCattleDirectory,
     this.initialRoute = '/',
@@ -63,6 +66,7 @@ final class IchuApp extends StatefulWidget {
   final CattleManagementService cattleManagementService;
   final MonitoringReadService monitoringService;
   final AlertReadService alertService;
+  final EdgeAlertReadService edgeAlertService;
   final FieldRecordService fieldRecordService;
   final FieldCattleDirectory fieldCattleDirectory;
   final String initialRoute;
@@ -93,6 +97,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
         oldWidget.cattleManagementService != widget.cattleManagementService ||
         oldWidget.monitoringService != widget.monitoringService ||
         oldWidget.alertService != widget.alertService ||
+        oldWidget.edgeAlertService != widget.edgeAlertService ||
         oldWidget.fieldRecordService != widget.fieldRecordService ||
         oldWidget.fieldCattleDirectory != widget.fieldCattleDirectory) {
       _router.dispose();
@@ -168,6 +173,12 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
         return '/account/ranches';
       }
       if (signedIn &&
+          path == '/account/edge-alerts' &&
+          (widget.ranchSelection.selectedRanch == null ||
+              !widget.edgeAlertService.hasContext)) {
+        return '/account/ranches';
+      }
+      if (signedIn &&
           path == '/account/field-records' &&
           (widget.ranchSelection.selectedRanch == null ||
               widget.fieldRecordService.context == null)) {
@@ -222,6 +233,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           onOpenRanches: () => _router.push('/account/ranches'),
           onOpenAnimals: () => _router.push('/account/animals'),
           onOpenAlerts: () => _router.push('/account/alerts'),
+          onOpenEdgeAlerts: () => _router.push('/account/edge-alerts'),
           onOpenFieldRecords: () => _router.push('/account/field-records'),
           onOpenAdvisories: () => _router.push('/account/advisories'),
         ),
@@ -240,6 +252,15 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
             builder: (context, state) => RanchAlertsPage(
               language: widget.language,
               service: widget.alertService,
+              onBack: () => _router.go('/account'),
+              onOpenRanches: () => _router.go('/account/ranches'),
+            ),
+          ),
+          GoRoute(
+            path: 'edge-alerts',
+            builder: (context, state) => EdgeAlertsPage(
+              language: widget.language,
+              service: widget.edgeAlertService,
               onBack: () => _router.go('/account'),
               onOpenRanches: () => _router.go('/account/ranches'),
             ),

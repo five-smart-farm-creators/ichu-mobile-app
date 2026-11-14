@@ -5,7 +5,7 @@ Flutter app for ICHU field work on **Android and iOS**.
 ## What it does
 - Firebase sign-in and supported account registration.
 - Explicit selection of a server-authorized ranch.
-- Read-only animal profiles, latest telemetry summaries, and paginated cloud alerts.
+- Read-only animal profiles, latest telemetry summaries, paginated cloud alerts, and synchronized Edge Gateway alert details.
 - English and Latin American Spanish, with accessible, adaptable layouts.
 
 ## Run
