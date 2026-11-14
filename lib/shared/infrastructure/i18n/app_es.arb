@@ -435,5 +435,55 @@
   "monitoringHistoryValueInvalid": "Captura inválida",
   "monitoringHistoryOldestAvailable": "Captura más antigua disponible: {date}",
   "@monitoringHistoryOldestAvailable": { "description": "Fecha más antigua informada por el servidor; no constituye una garantía de retención.", "placeholders": { "date": { "type": "String" } } },
-  "monitoringErrorHistoryQuery": "No se aceptó el periodo o la página del historial. Revisa las fechas seleccionadas e inténtalo de nuevo."
+  "monitoringErrorHistoryQuery": "No se aceptó el periodo o la página del historial. Revisa las fechas seleccionadas e inténtalo de nuevo.",
+  "fieldRecordTitle": "Registros de campo",
+  "fieldRecordLead": "Los registros se guardan en este dispositivo para esta cuenta y unidad productiva. Todavía no se envían al servidor.",
+  "fieldRecordBack": "Volver a la cuenta",
+  "fieldRecordDraftCleared": "La cuenta o la unidad productiva cambió. Se borraron los datos sin guardar del formulario; los registros guardados permanecen con su cuenta y unidad originales.",
+  "fieldRecordContextUnavailable": "Selecciona una unidad productiva autorizada para cargar sus registros locales. Cerrar sesión o cambiar de cuenta no elimina los registros guardados.",
+  "fieldRecordCreateTitle": "Registrar un evento de campo",
+  "fieldRecordPermissionRequired": "El acceso actual a la unidad productiva, emitido por el servidor, no permite registrar eventos de campo. Los registros guardados siguen disponibles.",
+  "fieldRecordCattleTag": "Arete del animal",
+  "fieldRecordCattleTagHelp": "Busca el arete exacto. Los animales cargados anteriormente están disponibles sin conexión.",
+  "fieldRecordCattleTagInvalid": "Ingresa un arete de 1 a 30 caracteres.",
+  "fieldRecordFindCattle": "Buscar animal",
+  "fieldRecordCattleLoadError": "No se pudo verificar la lista de animales. Vuelve a intentarlo antes de guardar un registro de campo.",
+  "fieldRecordCattleNotFound": "No se encontró ningún animal con este arete exacto en la unidad productiva seleccionada.",
+  "fieldRecordCattleOfflineHelp": "Para registrar sin conexión, primero carga el animal por su arete exacto mientras tengas conexión. Las opciones cargadas se guardan para esta cuenta y unidad productiva.",
+  "fieldRecordCattleRequired": "Busca un registro de animal antes de guardar este evento.",
+  "fieldRecordSelectedCattle": "Animal seleccionado: {earTag}",
+  "@fieldRecordSelectedCattle": {
+    "placeholders": {
+      "earTag": { "type": "String" }
+    }
+  },
+  "fieldRecordType": "Tipo de evento",
+  "fieldRecordTypeHealthEvent": "Evento de salud",
+  "fieldRecordTypeBirth": "Nacimiento",
+  "fieldRecordTypeNaturalMating": "Empadre natural",
+  "fieldRecordTypeAbortion": "Aborto",
+  "fieldRecordTypeHeatObserved": "Celo observado",
+  "fieldRecordOccurredAt": "Fecha y hora de observación",
+  "fieldRecordChooseDate": "Elegir fecha del evento",
+  "fieldRecordChooseTime": "Elegir hora del evento",
+  "fieldRecordFutureDate": "La hora del evento no puede superar en más de cinco minutos la hora actual.",
+  "fieldRecordSireReference": "Referencia del toro (opcional)",
+  "fieldRecordObservation": "Observación (opcional)",
+  "fieldRecordSave": "Guardar sin conexión",
+  "fieldRecordSaving": "Guardando…",
+  "fieldRecordSaveInProgress": "Ya se está guardando un registro de campo. Espera a que termine antes de guardar otro.",
+  "fieldRecordSaved": "Registro guardado en este dispositivo. Todavía no se envió al servidor.",
+  "fieldRecordSavedPreviousContext": "El registro se guardó y permanece asociado con la cuenta y unidad productiva que estaban activas al guardarlo.",
+  "fieldRecordInvalid": "Revisa los datos del evento e inténtalo de nuevo.",
+  "fieldRecordStorageError": "No se pudo confirmar el resultado del almacenamiento local. ICHU no eliminó ningún registro pendiente.",
+  "fieldRecordPendingTitle": "Guardados en este dispositivo",
+  "fieldRecordPendingLead": "Estos registros son locales y todavía no se enviaron al backend.",
+  "fieldRecordEmpty": "No hay registros de campo guardados para esta unidad productiva.",
+  "fieldRecordPendingAt": "Observado el {occurredAt}",
+  "@fieldRecordPendingAt": {
+    "placeholders": {
+      "occurredAt": { "type": "String" }
+    }
+  },
+  "fieldRecordRetry": "Reintentar"
 }
