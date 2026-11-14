@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/field_record.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/field_record_sync.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/repositories/field_record_repository.dart';
 
 /// In-memory test fixture; production storage uses the platform preferences adapter.
@@ -10,6 +11,47 @@ final class MemoryFieldRecordRepository implements FieldRecordRepository {
       <String, List<FieldCattleOption>>{};
   Completer<void>? appendEntered;
   Completer<void>? appendBarrier;
+  Object? applyFailure;
+  final Map<String, List<FieldRecordSyncResult>> _issues = {};
+
+  @override
+  Future<List<FieldRecordSyncResult>> readSyncIssues({
+    required String accountId,
+    required String ranchId,
+  }) async => List<FieldRecordSyncResult>.unmodifiable(
+    _issues[_key(accountId, ranchId)] ?? [],
+  );
+
+  @override
+  Future<void> applySyncResults({
+    required String accountId,
+    required String ranchId,
+    required List<FieldRecord> submitted,
+    required List<FieldRecordSyncResult> results,
+  }) async {
+    if (applyFailure case final failure?) throw failure;
+    validateFieldRecordSyncResults(submitted, results);
+    final key = _key(accountId, ranchId);
+    final confirmed = results
+        .where((result) => result.confirmed)
+        .map((result) => result.operationId)
+        .toSet();
+    _records[key] = (_records[key] ?? [])
+        .where((record) => !confirmed.contains(record.operationId))
+        .toList();
+    final issues = {
+      for (final issue in _issues[key] ?? <FieldRecordSyncResult>[])
+        issue.operationId: issue,
+    };
+    for (final result in results) {
+      if (result.confirmed) {
+        issues.remove(result.operationId);
+      } else {
+        issues[result.operationId] = result;
+      }
+    }
+    _issues[key] = issues.values.toList();
+  }
 
   String _key(String accountId, String ranchId) =>
       '${accountId.toLowerCase()}|${ranchId.toLowerCase()}';

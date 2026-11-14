@@ -54,7 +54,10 @@ void main() {
       fixture.repository.failure = const MonitoringFailure(
         MonitoringFailureCode.network,
       );
-      await tester.tap(find.byKey(const Key('edge-alerts-refresh')));
+      final refresh = find.byKey(const Key('edge-alerts-refresh'));
+      await tester.ensureVisible(refresh);
+      await tester.pumpAndSettle();
+      await tester.tap(refresh);
       await tester.pumpAndSettle();
       expect(find.text(_strings(tester).edgeAlertStale), findsOneWidget);
       expect(find.byKey(const Key('edge-alerts-stale')), findsOneWidget);
@@ -62,7 +65,9 @@ void main() {
 
       fixture.repository.failure = null;
       fixture.repository.pageResult = _page([_alert(suffix: '2')]);
-      await tester.tap(find.byKey(const Key('edge-alerts-refresh')));
+      await tester.ensureVisible(refresh);
+      await tester.pumpAndSettle();
+      await tester.tap(refresh);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('edge-alerts-stale')), findsNothing);
       expect(

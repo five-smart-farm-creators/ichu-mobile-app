@@ -211,7 +211,6 @@ final class _EdgeAlertCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppLocalizations.of(context);
-    final theme = Theme.of(context);
     final unit = switch (alert.unit) {
       'celsius' => strings.monitoringUnitCelsius,
       'index' => strings.monitoringUnitIndex,
@@ -281,10 +280,7 @@ final class _EdgeAlertCard extends StatelessWidget {
             label: strings.edgeAlertConfigurationRevision,
             value: alert.configurationRevision.toString(),
           ),
-          _Value(
-            label: strings.edgeAlertEvidenceCount,
-            value: strings.edgeAlertEvidence(alert.readingIds.length),
-          ),
+          Text(strings.edgeAlertEvidence(alert.readingIds.length)),
         ],
       ),
     );

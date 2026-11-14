@@ -36,6 +36,7 @@ import 'features/operations_monitoring/infrastructure/http/monitoring_api_client
 import 'features/operations_monitoring/infrastructure/repositories/rest_monitoring_repository.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_alert_repository.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_edge_alert_repository.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_field_record_sync_repository.dart';
 import 'features/operations_monitoring/infrastructure/adapters/field_cattle_directory_adapter.dart';
 import 'features/operations_monitoring/infrastructure/preferences/shared_preferences_field_record_repository.dart';
 import 'shared/application/services/language_service.dart';
@@ -111,12 +112,6 @@ Future<void> main() async {
     access: ranchAccess,
     cattle: cattleRepository,
   );
-  final fieldRecordService = FieldRecordService(
-    access: ranchAccess,
-    repository: SharedPreferencesFieldRecordRepository(
-      SharedPreferencesAsync(),
-    ),
-  );
   final fieldCattleDirectory = FieldCattleDirectoryAdapter(
     lookup: CattleLookupFacade(access: ranchAccess, cattle: cattleRepository),
   );
@@ -141,6 +136,13 @@ Future<void> main() async {
   final monitoringService = MonitoringReadService(
     access: ranchAccess,
     monitoring: RestMonitoringRepository(api: monitoringApi),
+  );
+  final fieldRecordService = FieldRecordService(
+    access: ranchAccess,
+    repository: SharedPreferencesFieldRecordRepository(
+      SharedPreferencesAsync(),
+    ),
+    syncRepository: RestFieldRecordSyncRepository(api: monitoringApi),
   );
   final alertRepository = RestAlertRepository(api: monitoringApi);
   final alertService = AlertReadService(

@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_search.dart';
-import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/edge_alert.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/infrastructure/repositories/rest_edge_alert_repository.dart';
