@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented authorized ranch selection, discarded access credentials, conservative expiration handling, session-only context ownership, and verified selector/native regression checks with explicit live-integration limits.
 
 ### Changed
+- Wired offline field records into account navigation and app composition, with exact cattle lookup scoped to the currently authorized managed ranch.
 - Reused Operations Monitoring presentation formatting for both latest observations and alert events, preserving localized decimals without binary artifacts and local capture/reception instants.
 - Extended account navigation with selection-bound animal reads and ranch-scoped detail guards; documented topic-branch cleanup after confirmed merges while preserving integration/release branches and unmerged work.
 - Restricted mobile professional profiles to read-only until the backend can safely order or identify ambiguous writes; removed unused editor contracts, save errors, and mutation transport code.

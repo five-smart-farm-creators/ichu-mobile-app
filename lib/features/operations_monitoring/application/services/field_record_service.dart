@@ -177,8 +177,9 @@ final class FieldRecordService extends ChangeNotifier {
 
   Future<void> cacheCattleOptions(List<FieldCattleOption> options) async {
     final context = _access.context;
-    if (context == null || !_access.isCurrent(context) || options.isEmpty)
+    if (context == null || !_access.isCurrent(context) || options.isEmpty) {
       return;
+    }
     final valid = options
         .where((option) => _sameId(option.ranchId, context.ranchId))
         .toList(growable: false);

@@ -30,13 +30,13 @@ void main() {
     testWidgets('${language.code} saves a field record locally', (
       tester,
     ) async {
-      await _withFixture(tester, language: language, (fixture) async {
+      await _withFixture(tester, (fixture) async {
         await tester.pumpWidget(_app(fixture));
         await tester.pumpAndSettle();
         final strings = _strings(tester);
 
         await tester.enterText(
-          find.byLabelText(strings.fieldRecordCattleTag),
+          find.byKey(const Key('field-record-cattle-tag')),
           'TAG-7',
         );
         await tester.tap(find.byTooltip(strings.fieldRecordFindCattle));
@@ -47,7 +47,7 @@ void main() {
         );
 
         await tester.enterText(
-          find.byLabelText(strings.fieldRecordObservation),
+          find.byKey(const Key('field-record-observation')),
           'Mild lameness',
         );
         await _tap(tester, find.text(strings.fieldRecordSave));
@@ -60,6 +60,37 @@ void main() {
         expect(find.textContaining('Mild lameness'), findsOneWidget);
       }, language: language);
     });
+
+    for (final (layout, size) in <(String, Size)>[
+      ('narrow', const Size(320, 568)),
+      ('landscape', const Size(640, 360)),
+    ]) {
+      testWidgets(
+        '${language.code} field records support $layout at large text',
+        (tester) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1;
+          tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+          try {
+            await _withFixture(tester, (fixture) async {
+              await tester.pumpWidget(_app(fixture));
+              await tester.pumpAndSettle();
+              expect(tester.takeException(), isNull);
+
+              final save = find.byKey(const Key('field-record-save'));
+              await tester.ensureVisible(save);
+              await tester.pumpAndSettle();
+              expect(tester.getSize(save).height, greaterThanOrEqualTo(48));
+              expect(tester.takeException(), isNull);
+            }, language: language);
+          } finally {
+            tester.view.resetPhysicalSize();
+            tester.view.resetDevicePixelRatio();
+            tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+          }
+        },
+      );
+    }
   }
 }
 

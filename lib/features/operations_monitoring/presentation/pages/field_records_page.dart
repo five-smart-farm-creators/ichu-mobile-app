@@ -340,6 +340,7 @@ final class _FieldRecordsPageState extends State<FieldRecordsPage> {
             const SizedBox(height: 12),
           ],
           TextFormField(
+            key: const Key('field-record-cattle-tag'),
             controller: _earTag,
             enabled: canCreate && !_findingCattle,
             textInputAction: TextInputAction.search,
@@ -385,6 +386,7 @@ final class _FieldRecordsPageState extends State<FieldRecordsPage> {
           ],
           DropdownButtonFormField<FieldRecordType>(
             initialValue: _type,
+            isExpanded: true,
             decoration: InputDecoration(labelText: strings.fieldRecordType),
             items: FieldRecordType.values
                 .map(
@@ -424,6 +426,7 @@ final class _FieldRecordsPageState extends State<FieldRecordsPage> {
             ),
           ],
           TextFormField(
+            key: const Key('field-record-observation'),
             controller: _observation,
             enabled: canCreate,
             maxLength: FieldRecord.maximumObservationLength,
@@ -437,6 +440,7 @@ final class _FieldRecordsPageState extends State<FieldRecordsPage> {
           ),
           const SizedBox(height: 12),
           FilledButton.icon(
+            key: const Key('field-record-save'),
             onPressed: canCreate && _selectedCattle != null ? _save : null,
             icon: const Icon(Icons.save_outlined),
             label: Text(

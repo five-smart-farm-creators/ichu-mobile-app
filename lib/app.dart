@@ -8,6 +8,7 @@ import 'core/layout/terms_page.dart';
 import 'core/theme/ichu_theme.dart';
 import 'features/cattle_information/application/services/cattle_management_service.dart';
 import 'features/cattle_information/application/services/cattle_read_service.dart';
+import 'features/operations_monitoring/application/services/field_record_service.dart';
 import 'features/cattle_information/presentation/pages/cattle_list_page.dart';
 import 'features/cattle_information/presentation/pages/cattle_profile_page.dart';
 import 'features/iam/application/services/auth_service.dart';
@@ -27,6 +28,8 @@ import 'features/operations_monitoring/application/services/monitoring_read_serv
 import 'features/operations_monitoring/application/services/alert_read_service.dart';
 import 'features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
 import 'features/operations_monitoring/presentation/pages/ranch_alerts_page.dart';
+import 'features/operations_monitoring/domain/repositories/field_cattle_directory.dart';
+import 'features/operations_monitoring/presentation/pages/field_records_page.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/i18n/generated/app_localizations.dart';
 
@@ -44,6 +47,8 @@ final class IchuApp extends StatefulWidget {
     required this.cattleManagementService,
     required this.monitoringService,
     required this.alertService,
+    required this.fieldRecordService,
+    required this.fieldCattleDirectory,
     this.initialRoute = '/',
     this.onDispose,
   });
@@ -58,6 +63,8 @@ final class IchuApp extends StatefulWidget {
   final CattleManagementService cattleManagementService;
   final MonitoringReadService monitoringService;
   final AlertReadService alertService;
+  final FieldRecordService fieldRecordService;
+  final FieldCattleDirectory fieldCattleDirectory;
   final String initialRoute;
   final VoidCallback? onDispose;
 
@@ -85,7 +92,9 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
         oldWidget.herdAdvisoryService != widget.herdAdvisoryService ||
         oldWidget.cattleManagementService != widget.cattleManagementService ||
         oldWidget.monitoringService != widget.monitoringService ||
-        oldWidget.alertService != widget.alertService) {
+        oldWidget.alertService != widget.alertService ||
+        oldWidget.fieldRecordService != widget.fieldRecordService ||
+        oldWidget.fieldCattleDirectory != widget.fieldCattleDirectory) {
       _router.dispose();
       _router = _createRouter();
       unawaited(widget.authentication.initialize());
@@ -158,6 +167,12 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
               !widget.alertService.hasContext)) {
         return '/account/ranches';
       }
+      if (signedIn &&
+          path == '/account/field-records' &&
+          (widget.ranchSelection.selectedRanch == null ||
+              widget.fieldRecordService.context == null)) {
+        return '/account/ranches';
+      }
       // External return URLs and unrecognized destinations are never followed.
       return null;
     },
@@ -207,6 +222,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
           onOpenRanches: () => _router.push('/account/ranches'),
           onOpenAnimals: () => _router.push('/account/animals'),
           onOpenAlerts: () => _router.push('/account/alerts'),
+          onOpenFieldRecords: () => _router.push('/account/field-records'),
           onOpenAdvisories: () => _router.push('/account/advisories'),
         ),
         routes: [
@@ -226,6 +242,15 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
               service: widget.alertService,
               onBack: () => _router.go('/account'),
               onOpenRanches: () => _router.go('/account/ranches'),
+            ),
+          ),
+          GoRoute(
+            path: 'field-records',
+            builder: (context, state) => FieldRecordsPage(
+              language: widget.language,
+              records: widget.fieldRecordService,
+              cattleDirectory: widget.fieldCattleDirectory,
+              onBack: () => _router.go('/account'),
             ),
           ),
           GoRoute(

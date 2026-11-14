@@ -8,6 +8,7 @@ import 'package:ichu_mobile_app/app.dart';
 import 'package:ichu_mobile_app/core/theme/ichu_colors.dart';
 import 'package:ichu_mobile_app/features/cattle_information/application/services/cattle_management_service.dart';
 import 'package:ichu_mobile_app/features/cattle_information/application/services/cattle_read_service.dart';
+import 'package:ichu_mobile_app/features/cattle_information/application/facades/cattle_lookup_facade.dart';
 import 'package:ichu_mobile_app/features/cattle_information/domain/model/cattle.dart';
 import 'package:ichu_mobile_app/features/cattle_information/presentation/pages/cattle_list_page.dart';
 import 'package:ichu_mobile_app/features/cattle_information/presentation/pages/cattle_profile_page.dart';
@@ -27,9 +28,13 @@ import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/login_page.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/session_account_page.dart';
 import 'package:ichu_mobile_app/features/iam/presentation/pages/herd_advisory_page.dart';
+import 'package:ichu_mobile_app/shared/infrastructure/i18n/generated/app_localizations.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/alert_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/application/services/field_record_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/field_records_page.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/infrastructure/adapters/field_cattle_directory_adapter.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/ranch_alerts_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
@@ -44,6 +49,7 @@ import 'support/fake_herd_advisory_repository.dart';
 import 'support/fake_registration_repositories.dart';
 import 'support/fake_professional_profile_repository.dart';
 import 'support/memory_language_preferences.dart';
+import 'support/memory_field_record_repository.dart';
 
 const _user = AuthUser(
   uid: 'widget-user',
@@ -92,6 +98,8 @@ Future<
     FakeMonitoringRepository monitoring,
     AlertReadService alertService,
     FakeAlertRepository alerts,
+    FieldRecordService fieldRecordService,
+    MemoryFieldRecordRepository fieldRecordRepository,
   })
 >
 pumpApp(
@@ -128,6 +136,14 @@ pumpApp(
   );
   final cattle = FakeCattleRepository();
   final cattleService = CattleReadService(access: ranchAccess, cattle: cattle);
+  final fieldRecordRepository = MemoryFieldRecordRepository();
+  final fieldRecordService = FieldRecordService(
+    access: ranchAccess,
+    repository: fieldRecordRepository,
+  );
+  final fieldCattleDirectory = FieldCattleDirectoryAdapter(
+    lookup: CattleLookupFacade(access: ranchAccess, cattle: cattle),
+  );
   final herdAdvisories = FakeHerdAdvisoryRepository();
   final herdAdvisoryService = HerdAdvisoryService(
     advisories: herdAdvisories,
@@ -166,6 +182,7 @@ pumpApp(
   );
   addTearDown(() async {
     alertService.dispose();
+    fieldRecordService.dispose();
     monitoringService.dispose();
     cattleManagementService.dispose();
     cattleService.dispose();
@@ -192,6 +209,8 @@ pumpApp(
       cattleManagementService: cattleManagementService,
       monitoringService: monitoringService,
       alertService: alertService,
+      fieldRecordService: fieldRecordService,
+      fieldCattleDirectory: fieldCattleDirectory,
       initialRoute: initialRoute,
     ),
   );
@@ -216,6 +235,8 @@ pumpApp(
     monitoring: monitoring,
     alertService: alertService,
     alerts: alerts,
+    fieldRecordService: fieldRecordService,
+    fieldRecordRepository: fieldRecordRepository,
   );
 }
 
@@ -240,6 +261,120 @@ TextField passwordField(WidgetTester tester) => tester.widget<TextField>(
 );
 
 void main() {
+  testWidgets('field record deep links require a validated session', (
+    tester,
+  ) async {
+    final fixture = await pumpApp(
+      tester,
+      initialRoute: '/account/field-records',
+    );
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(fixture.fieldRecordService.records, isEmpty);
+  });
+
+  testWidgets('field record URLs cannot select a ranch', (tester) async {
+    final fixture = await pumpApp(
+      tester,
+      restored: true,
+      ranches: const [_managedRanch],
+    );
+    GoRouter.of(
+      tester.element(find.byType(SessionAccountPage)),
+    ).go('/account/field-records?ranchId=${_managedRanch.ranchId}');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Authorized ranches'), findsOneWidget);
+    expect(find.byType(FieldRecordsPage), findsNothing);
+    expect(fixture.ranchSelection.selectedRanch, isNull);
+  });
+
+  testWidgets(
+    'manager opens field records and resolves cattle in selected ranch',
+    (tester) async {
+      final fixture = await pumpApp(
+        tester,
+        restored: true,
+        ranches: const [_managedRanch],
+      );
+      fixture.cattle.listResult = <Cattle>[
+        syntheticCattle(
+          ranchId: _managedRanch.ranchId,
+          id: 'field-record-cattle',
+          earTag: 'TAG-88',
+        ),
+      ];
+      expect(fixture.ranchSelection.select(_managedRanch.ranchId), isTrue);
+      await tester.pumpAndSettle();
+
+      final entry = find.byKey(const Key('account-field-records'));
+      await tester.ensureVisible(entry);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      expect(find.byType(FieldRecordsPage), findsOneWidget);
+      expect(fixture.fieldRecordService.canCreate, isTrue);
+
+      final strings = AppLocalizations.of(
+        tester.element(find.byType(FieldRecordsPage)),
+      );
+      await tester.enterText(
+        find.byKey(const Key('field-record-cattle-tag')),
+        'TAG-88',
+      );
+      await tester.tap(find.byTooltip(strings.fieldRecordFindCattle));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(strings.fieldRecordSelectedCattle('TAG-88')),
+        findsOneWidget,
+      );
+      expect(fixture.cattle.listRequests.single.ranchId, _managedRanch.ranchId);
+      expect(fixture.cattle.listRequests.single.query.earTag, 'TAG-88');
+
+      await tester.enterText(
+        find.byKey(const Key('field-record-observation')),
+        'Synthetic integration check',
+      );
+      await tester.ensureVisible(find.byKey(const Key('field-record-save')));
+      await tester.tap(find.byKey(const Key('field-record-save')));
+      await tester.pumpAndSettle();
+      expect(fixture.fieldRecordService.records, hasLength(1));
+      expect(
+        fixture.fieldRecordService.records.single.observation,
+        'Synthetic integration check',
+      );
+      expect(
+        fixture.fieldRecordService.records.single.ranchId,
+        _managedRanch.ranchId,
+      );
+    },
+  );
+
+  testWidgets(
+    'read-only ranch grants can view but cannot create field records',
+    (tester) async {
+      final fixture = await pumpApp(
+        tester,
+        restored: true,
+        ranches: const [_ranch],
+      );
+      expect(fixture.ranchSelection.select(_ranch.ranchId), isTrue);
+      await tester.pumpAndSettle();
+
+      final entry = find.byKey(const Key('account-field-records'));
+      await tester.ensureVisible(entry);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FieldRecordsPage), findsOneWidget);
+      expect(fixture.fieldRecordService.canCreate, isFalse);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('field-record-save')))
+            .onPressed,
+        isNull,
+      );
+    },
+  );
+
   testWidgets('ranch alert links require a validated session', (tester) async {
     final fixture = await pumpApp(tester, initialRoute: '/account/alerts');
     expect(find.byType(LoginPage), findsOneWidget);

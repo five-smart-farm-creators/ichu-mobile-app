@@ -22,8 +22,12 @@ final class SharedPreferencesFieldRecordRepository
   SharedPreferencesFieldRecordRepository.withAccess({
     required Future<String?> Function(String key) readString,
     required Future<void> Function(String key, String value) writeString,
-  }) : _readString = readString,
-       _writeString = writeString;
+  }) : this._(readString: readString, writeString: writeString);
+
+  SharedPreferencesFieldRecordRepository._({
+    required this._readString,
+    required this._writeString,
+  });
 
   @override
   Future<List<FieldRecord>> readPending({
@@ -104,7 +108,7 @@ final class SharedPreferencesFieldRecordRepository
     final result = _operationQueue.then((_) => operation(key));
     _operationQueue = result.then<void>(
       (_) {},
-      onError: (Object _, StackTrace __) {},
+      onError: (Object _, StackTrace _) {},
     );
     return result;
   }
