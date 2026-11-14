@@ -9,6 +9,8 @@ import '../../../../shared/infrastructure/i18n/generated/app_localizations.dart'
 import '../../application/services/field_record_service.dart';
 import '../../domain/model/field_record.dart';
 import '../../domain/repositories/field_cattle_directory.dart';
+import '../../domain/model/field_record_sync.dart';
+import '../widgets/field_record_sync_panel.dart';
 
 final class FieldRecordsPage extends StatefulWidget {
   const FieldRecordsPage({
@@ -309,6 +311,8 @@ final class _FieldRecordsPageState extends State<FieldRecordsPage> {
                 ],
                 _buildForm(strings),
                 const SizedBox(height: 24),
+                FieldRecordSyncPanel(records: widget.records),
+                const SizedBox(height: 24),
                 _buildPendingRecords(strings, theme),
               ],
             ],
@@ -473,6 +477,17 @@ final class _FieldRecordsPageState extends State<FieldRecordsPage> {
             final occurredAt = DateFormat.yMMMd(
               strings.localeName,
             ).add_Hm().format(record.occurredAt.toLocal());
+            final issue = widget.records.syncIssues
+                .where(
+                  (issue) =>
+                      issue.operationId.toLowerCase() == record.operationId,
+                )
+                .firstOrNull;
+            final syncNotice = issue == null
+                ? null
+                : issue.status == FieldRecordSyncStatus.conflict
+                ? strings.fieldSyncConflict
+                : strings.fieldSyncRejected;
             return Card(
               child: ListTile(
                 leading: const Icon(Icons.cloud_off_outlined),
@@ -480,9 +495,11 @@ final class _FieldRecordsPageState extends State<FieldRecordsPage> {
                   '${_typeLabel(strings, record.type)} · ${record.cattleEarTag}',
                 ),
                 subtitle: Text(
-                  record.observation == null
-                      ? strings.fieldRecordPendingAt(occurredAt)
-                      : '${strings.fieldRecordPendingAt(occurredAt)}\n${record.observation}',
+                  [
+                    strings.fieldRecordPendingAt(occurredAt),
+                    if (record.observation != null) record.observation!,
+                    ?syncNotice,
+                  ].join('\n'),
                 ),
                 isThreeLine: record.observation != null,
               ),

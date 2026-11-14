@@ -11,6 +11,7 @@ import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
 import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/field_record_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/field_record.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/field_record_sync.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/repositories/field_cattle_directory.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/field_records_page.dart';
 import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
@@ -18,6 +19,7 @@ import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
 import 'package:ichu_mobile_app/shared/infrastructure/i18n/generated/app_localizations.dart';
 
 import '../../../support/fake_iam_repositories.dart';
+import '../../../support/fake_field_record_sync_repository.dart';
 import '../../../support/memory_field_record_repository.dart';
 import '../../../support/memory_language_preferences.dart';
 
@@ -58,8 +60,64 @@ void main() {
         expect(fixture.records.records.single.observation, 'Mild lameness');
         expect(fixture.cattleDirectory.requestedEarTags, <String>['TAG-7']);
         expect(find.textContaining('Mild lameness'), findsOneWidget);
+        expect(fixture.remote.requests, isEmpty);
+        await _tap(tester, find.byKey(const Key('field-sync-send')));
+        expect(fixture.records.records, isEmpty);
+        expect(find.text(strings.fieldSyncConfirmed(1)), findsOneWidget);
+        expect(find.text(strings.fieldRecordEmpty), findsOneWidget);
       }, language: language);
     });
+
+    testWidgets(
+      '${language.code} keeps uncertain deliveries and retries without new identifiers',
+      (tester) async {
+        await _withFixture(tester, (fixture) async {
+          await _capture(fixture);
+          await tester.pumpWidget(_app(fixture));
+          await tester.pumpAndSettle();
+          final strings = _strings(tester);
+          final record = fixture.records.records.single;
+          fixture.remote.failure = const FieldRecordSyncFailure(
+            FieldRecordSyncFailureCode.network,
+          );
+          await _tap(tester, find.byKey(const Key('field-sync-send')));
+          expect(find.text(strings.fieldSyncConnectionError), findsOneWidget);
+          expect(fixture.records.records.single, record);
+          expect(fixture.records.canCreate, isTrue);
+          fixture.remote.failure = null;
+          await _tap(tester, find.byKey(const Key('field-sync-send')));
+          expect(fixture.remote.requests.last.records, [record]);
+          expect(fixture.records.records, isEmpty);
+          expect(find.text(strings.fieldSyncConnectionError), findsNothing);
+        }, language: language);
+      },
+    );
+
+    testWidgets(
+      '${language.code} shows a retained conflict without raw server diagnostics',
+      (tester) async {
+        await _withFixture(tester, (fixture) async {
+          await _capture(fixture);
+          fixture.remote.respond = (records) => [
+            FieldRecordSyncResult(
+              operationId: records.single.operationId,
+              status: FieldRecordSyncStatus.conflict,
+              reason: 'Untrusted synthetic diagnostic',
+            ),
+          ];
+          await tester.pumpWidget(_app(fixture));
+          await tester.pumpAndSettle();
+          final strings = _strings(tester);
+          await _tap(tester, find.byKey(const Key('field-sync-send')));
+          expect(
+            find.textContaining(strings.fieldSyncConflict),
+            findsOneWidget,
+          );
+          expect(find.text('Untrusted synthetic diagnostic'), findsNothing);
+          expect(fixture.records.records, hasLength(1));
+        }, language: language);
+      },
+    );
 
     for (final (layout, size) in <(String, Size)>[
       ('narrow', const Size(320, 568)),
@@ -73,8 +131,25 @@ void main() {
           tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
           try {
             await _withFixture(tester, (fixture) async {
+              await _capture(fixture);
+              fixture.remote.respond = (records) => [
+                FieldRecordSyncResult(
+                  operationId: records.single.operationId,
+                  status: FieldRecordSyncStatus.rejected,
+                ),
+              ];
+              await fixture.records.synchronize();
               await tester.pumpWidget(_app(fixture));
               await tester.pumpAndSettle();
+              expect(tester.takeException(), isNull);
+              await tester.ensureVisible(
+                find.byKey(const Key('field-sync-send')),
+              );
+              await tester.pumpAndSettle();
+              expect(
+                tester.getSize(find.byKey(const Key('field-sync-send'))).height,
+                greaterThanOrEqualTo(48),
+              );
               expect(tester.takeException(), isNull);
 
               final save = find.byKey(const Key('field-record-save'));
@@ -132,9 +207,11 @@ Future<void> _withFixture(
     FieldCattleOption(cattleId: _cattleId, ranchId: _ranchId, earTag: 'TAG-7'),
   ]);
   final recordRepository = MemoryFieldRecordRepository();
+  final remote = FakeFieldRecordSyncRepository();
   final records = FieldRecordService(
     access: access,
     repository: recordRepository,
+    syncRepository: remote,
   );
   final languageService = LanguageService(
     MemoryLanguagePreferences(language: language),
@@ -149,6 +226,7 @@ Future<void> _withFixture(
     cattleDirectory: cattleDirectory,
     records: records,
     language: languageService,
+    remote: remote,
   );
   try {
     await body(fixture);
@@ -184,6 +262,20 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _capture(_Fixture fixture) async {
+  await fixture.records.load();
+  await fixture.records.cacheCattleOptions([
+    FieldCattleOption(cattleId: _cattleId, ranchId: _ranchId, earTag: 'TAG-7'),
+  ]);
+  await fixture.records.save(
+    cattleId: _cattleId,
+    cattleEarTag: 'TAG-7',
+    type: FieldRecordType.healthEvent,
+    occurredAt: DateTime.utc(2020),
+    observation: 'Synthetic offline record',
+  );
+}
+
 final class _Fixture {
   const _Fixture({
     required this.access,
@@ -194,6 +286,7 @@ final class _Fixture {
     required this.cattleDirectory,
     required this.records,
     required this.language,
+    required this.remote,
   });
 
   final AuthorizedRanchSession access;
@@ -204,6 +297,7 @@ final class _Fixture {
   final _FieldCattleDirectory cattleDirectory;
   final FieldRecordService records;
   final LanguageService language;
+  final FakeFieldRecordSyncRepository remote;
 
   void dispose() {
     records.dispose();
