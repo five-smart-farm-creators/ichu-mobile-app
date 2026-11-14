@@ -8,6 +8,9 @@ import 'package:http/http.dart' as http;
 import '../../../iam/application/facades/authorized_ranch_session.dart';
 import '../../domain/model/alert_acknowledgement.dart';
 import '../../domain/model/alert_search.dart';
+import '../../domain/model/field_record.dart';
+import '../../domain/model/field_record_sync.dart';
+import '../../domain/repositories/field_record_sync_repository.dart';
 import '../../domain/model/ranch_alert.dart';
 import '../../domain/model/monitoring_failure.dart';
 import '../../domain/model/telemetry_history_query.dart';
@@ -38,6 +41,68 @@ final class MonitoringApiClient {
   final Duration _timeout;
 
   bool get isConfigured => _session.isConfigured;
+
+  /// Sends one selected-ranch batch, never replaying it automatically.
+  Future<Object?> synchronizeFieldRecords({
+    required String accountId,
+    required String ranchId,
+    required List<FieldRecord> records,
+  }) async {
+    final batch = List<FieldRecord>.unmodifiable(records);
+    if (batch.isEmpty ||
+        batch.length > FieldRecordSyncRepository.batchSize ||
+        batch.any((record) => !_sameUuid(record.ranchId, ranchId)) ||
+        batch.map((record) => record.operationId).toSet().length !=
+            batch.length) {
+      throw const FieldRecordSyncFailure(
+        FieldRecordSyncFailureCode.invalidBatch,
+      );
+    }
+    _validateRanchId(ranchId);
+    final context = _requireContext(ranchId);
+    if (!_sameUuid(context.accountId, accountId)) {
+      throw const MonitoringFailure(MonitoringFailureCode.contextUnavailable);
+    }
+    if (!context.canManage) {
+      throw const MonitoringFailure(MonitoringFailureCode.forbidden);
+    }
+    final response = await _requestJson(
+      context,
+      'POST',
+      'mobile-sync/batch',
+      body: {
+        'operations': batch
+            .map(
+              (record) => <String, Object?>{
+                'operationId': record.operationId,
+                'cattleId': record.cattleId,
+                'type': switch (record.type) {
+                  FieldRecordType.healthEvent => 'HealthEvent',
+                  FieldRecordType.birth => 'Birth',
+                  FieldRecordType.naturalMating => 'NaturalMating',
+                  FieldRecordType.abortion => 'Abortion',
+                  FieldRecordType.heatObserved => 'HeatObserved',
+                },
+                'occurredAt': record.occurredAt.toUtc().toIso8601String(),
+                if (record.observation != null)
+                  'observation': record.observation,
+                if (record.sireReference != null)
+                  'sireReference': record.sireReference,
+              },
+            )
+            .toList(growable: false),
+      },
+    );
+    if (response.statusCode == 400) {
+      throw const FieldRecordSyncFailure(
+        FieldRecordSyncFailureCode.invalidBatch,
+      );
+    }
+    if (response.statusCode != 200) {
+      throw _failureForStatus(response.statusCode);
+    }
+    return response.payload;
+  }
 
   Future<Object?> latest(String ranchId, String cattleId) async {
     _validateRanchId(ranchId);
