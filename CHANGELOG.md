@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Authorized, paginated historical telemetry for a selected animal, with bounded time ranges, validated capture status, and EN/ES date, metric, and empty-state presentation.
+- Persisted offline field records and previously authorized cattle choices, isolated by account and ranch and retained when signing out or changing context.
 - Protected, localized ranch-advisory navigation and service composition for veterinarian access requests and manager review/direct grants, with selected-ranch authorization context.
 - Ranch-manager animal registration, detail correction, productive-stage change, and deactivation screens (EN/ES) wired into app composition and shown only for server-issued manage grants.
 - Version-checked, idempotent cloud-only alert acknowledgements with server timestamps, safe same-operation retries, conflict refresh, and explicit limits against implying clinical attendance, resolution, or Edge synchronization.
