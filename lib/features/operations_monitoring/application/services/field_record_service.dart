@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 
 import '../../../iam/application/facades/authorized_ranch_session.dart';
 import '../../domain/model/field_record.dart';
+import '../../domain/model/field_record_sync.dart';
 import '../../domain/repositories/field_record_repository.dart';
+import '../../domain/repositories/field_record_sync_repository.dart';
 
 enum FieldRecordLoadStatus { idle, loading, ready, unavailable }
 
@@ -28,6 +30,7 @@ final class FieldRecordService extends ChangeNotifier {
   FieldRecordService({
     required AuthorizedRanchSession access,
     required this.repository,
+    this.syncRepository,
   }) : _access = access,
        _observedContext = access.context,
        _requestContext = access.context {
@@ -36,6 +39,7 @@ final class FieldRecordService extends ChangeNotifier {
 
   final AuthorizedRanchSession _access;
   final FieldRecordRepository repository;
+  final FieldRecordSyncRepository? syncRepository;
   AuthorizedRanchContext? _observedContext;
   AuthorizedRanchContext? _requestContext;
   List<FieldRecord> _records = const <FieldRecord>[];
@@ -47,6 +51,11 @@ final class FieldRecordService extends ChangeNotifier {
   int _revision = 0;
   bool _saving = false;
   bool _disposed = false;
+  Future<bool>? _pendingSync;
+  AuthorizedRanchContext? _syncContext;
+  FieldRecordSyncFailure? _syncError;
+  List<FieldRecordSyncResult> _syncIssues = const [];
+  int? _lastSyncConfirmed;
 
   AuthorizedRanchContext? get context => _visible ? _requestContext : null;
   FieldRecordLoadStatus get status =>
@@ -63,9 +72,125 @@ final class FieldRecordService extends ChangeNotifier {
       _error == null &&
       !_saving;
   int get revision => _revision;
+  bool get synchronizing => _visible && _pendingSync != null;
+  bool get canSynchronize =>
+      canCreate &&
+      syncRepository?.isConfigured == true &&
+      _records.isNotEmpty &&
+      _pendingSync == null;
+  FieldRecordSyncFailure? get syncError => _visible ? _syncError : null;
+  List<FieldRecordSyncResult> get syncIssues =>
+      _visible ? _syncIssues : const [];
+  int? get lastSyncConfirmed => _visible ? _lastSyncConfirmed : null;
+
+  /// Synchronizes a fixed snapshot on explicit intent. New captures wait for the
+  /// next request; uncertain deliveries retain their original identifiers.
+  Future<bool> synchronize() {
+    if (_pendingSync != null) {
+      return identical(context, _syncContext)
+          ? _pendingSync!
+          : Future.value(false);
+    }
+    if (!canSynchronize) return Future.value(false);
+    final current = context!;
+    final generation = _generation;
+    final snapshot = List<FieldRecord>.unmodifiable(_records);
+    _syncContext = current;
+    _syncError = null;
+    _lastSyncConfirmed = 0;
+    final pending = Future<bool>.microtask(
+      () => _performSync(current, generation, snapshot),
+    );
+    _pendingSync = pending;
+    notifyListeners();
+    return pending;
+  }
+
+  Future<bool> _performSync(
+    AuthorizedRanchContext current,
+    int generation,
+    List<FieldRecord> snapshot,
+  ) async {
+    try {
+      for (
+        var offset = 0;
+        offset < snapshot.length;
+        offset += FieldRecordSyncRepository.batchSize
+      ) {
+        if (!_isCurrent(current, generation)) return false;
+        final batch = snapshot
+            .skip(offset)
+            .take(FieldRecordSyncRepository.batchSize)
+            .toList(growable: false);
+        final results = await syncRepository!.synchronize(
+          accountId: current.accountId,
+          ranchId: current.ranchId,
+          records: batch,
+        );
+        if (!_isCurrent(current, generation)) return false;
+        validateFieldRecordSyncResults(batch, results);
+        try {
+          await repository.applySyncResults(
+            accountId: current.accountId,
+            ranchId: current.ranchId,
+            submitted: batch,
+            results: results,
+          );
+        } catch (_) {
+          throw const FieldRecordSyncFailure(
+            FieldRecordSyncFailureCode.storageUnavailable,
+          );
+        }
+        if (!_isCurrent(current, generation)) return false;
+        final confirmed = results
+            .where((result) => result.confirmed)
+            .map((result) => result.operationId.toLowerCase())
+            .toSet();
+        _records = List<FieldRecord>.unmodifiable(
+          _records.where((record) => !confirmed.contains(record.operationId)),
+        );
+        final issues = {
+          for (final issue in _syncIssues) issue.operationId: issue,
+        };
+        for (final result in results) {
+          final id = result.operationId.toLowerCase();
+          if (result.confirmed) {
+            issues.remove(id);
+          } else {
+            issues[id] = result;
+          }
+        }
+        _syncIssues = List<FieldRecordSyncResult>.unmodifiable(issues.values);
+        _lastSyncConfirmed = (_lastSyncConfirmed ?? 0) + confirmed.length;
+        notifyListeners();
+      }
+      return true;
+    } on FieldRecordSyncFailure catch (failure) {
+      if (_isCurrent(current, generation)) _syncError = failure;
+      return false;
+    } catch (_) {
+      if (_isCurrent(current, generation)) {
+        _syncError = const FieldRecordSyncFailure(
+          FieldRecordSyncFailureCode.unknown,
+        );
+      }
+      return false;
+    } finally {
+      _pendingSync = null;
+      _syncContext = null;
+      if (!_disposed) {
+        if (_status == FieldRecordLoadStatus.idle && context != null) {
+          unawaited(load());
+        } else {
+          notifyListeners();
+        }
+      }
+    }
+  }
 
   Future<bool> load() {
     if (_disposed) return Future<bool>.value(false);
+    if (_pendingSync != null) return Future<bool>.value(false);
     final context = _access.context;
     if (context == null) {
       _beginUnavailable(
@@ -224,6 +349,10 @@ final class FieldRecordService extends ChangeNotifier {
         accountId: context.accountId,
         ranchId: context.ranchId,
       );
+      final issues = await repository.readSyncIssues(
+        accountId: context.accountId,
+        ranchId: context.ranchId,
+      );
       if (!_isCurrent(context, generation)) return false;
       if (records.any((record) => !_sameId(record.ranchId, context.ranchId)) ||
           cattleOptions.any(
@@ -234,6 +363,7 @@ final class FieldRecordService extends ChangeNotifier {
         );
       }
       _records = List<FieldRecord>.unmodifiable(records);
+      _syncIssues = List<FieldRecordSyncResult>.unmodifiable(issues);
       final optionsById = <String, FieldCattleOption>{
         for (final option in _cattleOptions)
           option.cattleId.toLowerCase(): option,
@@ -289,6 +419,9 @@ final class FieldRecordService extends ChangeNotifier {
     _pendingLoad = null;
     _saving = false;
     _revision++;
+    _syncError = null;
+    _syncIssues = const [];
+    _lastSyncConfirmed = null;
     notifyListeners();
     if (next != null) unawaited(load());
   }
