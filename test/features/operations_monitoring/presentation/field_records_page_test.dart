@@ -1,0 +1,204 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:ichu_mobile_app/core/theme/ichu_theme.dart';
+import 'package:ichu_mobile_app/features/iam/application/facades/authorized_ranch_session.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/auth_service.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/authentication_lifecycle.dart';
+import 'package:ichu_mobile_app/features/iam/application/services/ranch_selection_service.dart';
+import 'package:ichu_mobile_app/features/iam/domain/model/iam_account.dart';
+import 'package:ichu_mobile_app/features/iam/domain/model/ranch_access.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/application/services/field_record_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/field_record.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/repositories/field_cattle_directory.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/presentation/pages/field_records_page.dart';
+import 'package:ichu_mobile_app/shared/application/services/language_service.dart';
+import 'package:ichu_mobile_app/shared/domain/model/app_language.dart';
+import 'package:ichu_mobile_app/shared/infrastructure/i18n/generated/app_localizations.dart';
+
+import '../../../support/fake_iam_repositories.dart';
+import '../../../support/memory_field_record_repository.dart';
+import '../../../support/memory_language_preferences.dart';
+
+const _accountId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const _ranchId = '11111111-1111-4111-8111-111111111111';
+const _cattleId = '33333333-3333-4333-8333-333333333333';
+
+void main() {
+  for (final language in AppLanguage.values) {
+    testWidgets('${language.code} saves a field record locally', (
+      tester,
+    ) async {
+      await _withFixture(tester, language: language, (fixture) async {
+        await tester.pumpWidget(_app(fixture));
+        await tester.pumpAndSettle();
+        final strings = _strings(tester);
+
+        await tester.enterText(
+          find.byLabelText(strings.fieldRecordCattleTag),
+          'TAG-7',
+        );
+        await tester.tap(find.byTooltip(strings.fieldRecordFindCattle));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(strings.fieldRecordSelectedCattle('TAG-7')),
+          findsOneWidget,
+        );
+
+        await tester.enterText(
+          find.byLabelText(strings.fieldRecordObservation),
+          'Mild lameness',
+        );
+        await _tap(tester, find.text(strings.fieldRecordSave));
+
+        expect(fixture.records.records, hasLength(1));
+        expect(fixture.records.records.single.ranchId, _ranchId);
+        expect(fixture.records.records.single.cattleId, _cattleId);
+        expect(fixture.records.records.single.observation, 'Mild lameness');
+        expect(fixture.cattleDirectory.requestedEarTags, <String>['TAG-7']);
+        expect(find.textContaining('Mild lameness'), findsOneWidget);
+      }, language: language);
+    });
+  }
+}
+
+Future<void> _withFixture(
+  WidgetTester tester,
+  Future<void> Function(_Fixture fixture) body, {
+  required AppLanguage language,
+}) async {
+  final identity = FakeAuthenticationRepository();
+  final accounts = FakeAccountRepository(
+    account: const IamAccount(
+      id: _accountId,
+      email: 'user@example.test',
+      role: AccountRole.ranchManager,
+      status: 'active',
+    ),
+    ranches: const <RanchAccess>[
+      RanchAccess(
+        ranchId: _ranchId,
+        scope: AccessScope.manage,
+        name: 'Selected ranch',
+        region: 'Synthetic region',
+        district: 'Synthetic district',
+      ),
+    ],
+  );
+  final lifecycle = AuthenticationLifecycle(identity);
+  final auth = AuthService(authentication: lifecycle, accounts: accounts);
+  final selection = RanchSelectionService(session: auth);
+  final access = AuthorizedRanchSession(
+    session: auth,
+    selection: selection,
+    authentication: lifecycle,
+  );
+  await auth.initialize();
+  expect(selection.select(_ranchId), isTrue);
+
+  final cattleDirectory = _FieldCattleDirectory(<FieldCattleOption>[
+    FieldCattleOption(cattleId: _cattleId, ranchId: _ranchId, earTag: 'TAG-7'),
+  ]);
+  final recordRepository = MemoryFieldRecordRepository();
+  final records = FieldRecordService(
+    access: access,
+    repository: recordRepository,
+  );
+  final languageService = LanguageService(
+    MemoryLanguagePreferences(language: language),
+  );
+  await languageService.initialize();
+  final fixture = _Fixture(
+    access: access,
+    selection: selection,
+    auth: auth,
+    lifecycle: lifecycle,
+    identity: identity,
+    cattleDirectory: cattleDirectory,
+    records: records,
+    language: languageService,
+  );
+  try {
+    await body(fixture);
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    fixture.dispose();
+  }
+}
+
+Widget _app(_Fixture fixture) => ListenableBuilder(
+  listenable: fixture.language,
+  builder: (context, _) => MaterialApp(
+    theme: IchuTheme.light,
+    locale: Locale(fixture.language.current.code),
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: FieldRecordsPage(
+      language: fixture.language,
+      records: fixture.records,
+      cattleDirectory: fixture.cattleDirectory,
+      onBack: () {},
+    ),
+  ),
+);
+
+AppLocalizations _strings(WidgetTester tester) =>
+    AppLocalizations.of(tester.element(find.byType(FieldRecordsPage)));
+
+Future<void> _tap(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+final class _Fixture {
+  const _Fixture({
+    required this.access,
+    required this.selection,
+    required this.auth,
+    required this.lifecycle,
+    required this.identity,
+    required this.cattleDirectory,
+    required this.records,
+    required this.language,
+  });
+
+  final AuthorizedRanchSession access;
+  final RanchSelectionService selection;
+  final AuthService auth;
+  final AuthenticationLifecycle lifecycle;
+  final FakeAuthenticationRepository identity;
+  final _FieldCattleDirectory cattleDirectory;
+  final FieldRecordService records;
+  final LanguageService language;
+
+  void dispose() {
+    records.dispose();
+    access.dispose();
+    selection.dispose();
+    auth.dispose();
+    lifecycle.dispose();
+    language.dispose();
+    unawaited(identity.close());
+  }
+}
+
+final class _FieldCattleDirectory implements FieldCattleDirectory {
+  _FieldCattleDirectory(this.options);
+
+  final List<FieldCattleOption> options;
+  final List<String> requestedEarTags = <String>[];
+
+  @override
+  Future<List<FieldCattleOption>> findByExactEarTag({
+    required String accountId,
+    required String ranchId,
+    required String earTag,
+  }) async {
+    requestedEarTags.add(earTag);
+    if (accountId != _accountId || ranchId != _ranchId) return const [];
+    return options.where((option) => option.earTag == earTag).toList();
+  }
+}
