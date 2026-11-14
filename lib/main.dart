@@ -31,6 +31,8 @@ import 'features/iam/infrastructure/repositories/rest_herd_advisory_repository.d
 import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
 import 'features/operations_monitoring/application/services/alert_read_service.dart';
 import 'features/operations_monitoring/application/services/edge_alert_read_service.dart';
+import 'features/operations_monitoring/application/services/waterer_read_service.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_waterer_repository.dart';
 import 'features/operations_monitoring/application/services/field_record_service.dart';
 import 'features/operations_monitoring/infrastructure/http/monitoring_api_client.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_monitoring_repository.dart';
@@ -153,6 +155,10 @@ Future<void> main() async {
     access: ranchAccess,
     edgeAlerts: RestEdgeAlertRepository(alerts: alertRepository),
   );
+  final watererService = WatererReadService(
+    access: ranchAccess,
+    waterers: RestWatererRepository(api: monitoringApi),
+  );
   runApp(
     IchuApp(
       language: language,
@@ -166,9 +172,11 @@ Future<void> main() async {
       monitoringService: monitoringService,
       alertService: alertService,
       edgeAlertService: edgeAlertService,
+      watererService: watererService,
       fieldRecordService: fieldRecordService,
       fieldCattleDirectory: fieldCattleDirectory,
       onDispose: () {
+        watererService.dispose();
         edgeAlertService.dispose();
         alertService.dispose();
         fieldRecordService.dispose();
