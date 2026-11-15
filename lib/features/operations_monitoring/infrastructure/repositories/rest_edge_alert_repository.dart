@@ -57,6 +57,8 @@ final class RestEdgeAlertRepository implements EdgeAlertRepository {
     type: switch (alert.type) {
       AlertType.temperature => EdgeAlertType.temperature,
       AlertType.activity => EdgeAlertType.activity,
+      AlertType.heartRate => EdgeAlertType.heartRate,
+      AlertType.methane => EdgeAlertType.methane,
       AlertType.geofence => EdgeAlertType.geofence,
     },
     severity: switch (alert.severity) {

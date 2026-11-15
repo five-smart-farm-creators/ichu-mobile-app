@@ -33,6 +33,20 @@ abstract final class MonitoringMapping {
         unit: 'index',
         telemetryUnit: TelemetryUnit.activityIndex,
       ),
+      heartRate: _indicator(
+        json['heartRate'],
+        unit: 'bpm',
+        telemetryUnit: TelemetryUnit.beatsPerMinute,
+        minimum: 30,
+        maximum: 200,
+      ),
+      methaneIndex: _indicator(
+        json['methaneIndex'],
+        unit: 'index',
+        telemetryUnit: TelemetryUnit.methaneIndex,
+        minimum: 0,
+        maximum: 100,
+      ),
       ruminationMinutes: _indicator(
         json['ruminationMinutes'],
         unit: 'minutes',
@@ -46,6 +60,8 @@ abstract final class MonitoringMapping {
     Object? payload, {
     required String unit,
     required TelemetryUnit telemetryUnit,
+    double? minimum,
+    double? maximum,
   }) {
     final json = _object(payload);
     if (_string(json['unit']) != unit) _invalid();
@@ -64,9 +80,11 @@ abstract final class MonitoringMapping {
         isStale == null) {
       _invalid();
     }
-    if ((telemetryUnit == TelemetryUnit.activityIndex ||
-            telemetryUnit == TelemetryUnit.minutes) &&
-        value < 0) {
+    if ((minimum != null && value < minimum) ||
+        (maximum != null && value > maximum) ||
+        ((telemetryUnit == TelemetryUnit.activityIndex ||
+                telemetryUnit == TelemetryUnit.minutes) &&
+            value < 0)) {
       _invalid();
     }
     return LatestIndicator.available(

@@ -84,6 +84,18 @@ abstract final class TelemetryHistoryMapping {
       receivedAt: _timestamp(json['receivedAt']),
       bodyTemperature: _measurement(json['bodyTemperature'], unit: 'celsius'),
       activityIndex: _measurement(json['activityIndex'], unit: 'index'),
+      heartRate: _measurement(
+        json['heartRate'],
+        unit: 'bpm',
+        minimum: 30,
+        maximum: 200,
+      ),
+      methaneIndex: _measurement(
+        json['methaneIndex'],
+        unit: 'index',
+        minimum: 0,
+        maximum: 100,
+      ),
       ruminationMinutes: _measurement(
         json['ruminationMinutes'],
         unit: 'minutes',

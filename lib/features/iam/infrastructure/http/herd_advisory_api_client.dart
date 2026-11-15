@@ -21,15 +21,16 @@ final class HerdAdvisoryApiClient {
   Future<Object?> requestAccess({
     required String ranchId,
     required String reason,
-  }) => _requireApi().postJson(
-    'ranches/$ranchId/herd-advisories',
-    <String, Object?>{'reason': reason},
-  );
+  }) => _requireApi().postJson('veterinary-access-requests', <String, Object?>{
+    'ranchId': ranchId,
+    'reason': reason,
+  });
 
   Future<Object?> advisoriesForRanch(String ranchId) {
     final context = _requireContext(ranchId);
     return _requireApi().getJson(
-      'ranches/$ranchId/herd-advisories',
+      'veterinary-access-requests',
+      queryParameters: <String, String>{'ranchId': ranchId},
       tokenProvider: () => _tokenFor(context),
       isContextCurrent: () => _session.isCurrent(context),
     );
@@ -49,7 +50,7 @@ final class HerdAdvisoryApiClient {
       optionalFields['expiresAt'] = expiresAt.toUtc().toIso8601String();
     }
     return _requireApi().patchJson(
-      'ranches/$ranchId/herd-advisories/$advisoryId',
+      'veterinary-access-requests/$advisoryId',
       <String, Object?>{'decision': decision, ...optionalFields},
       tokenProvider: () => _tokenFor(context),
       isContextCurrent: () => _session.isCurrent(context),

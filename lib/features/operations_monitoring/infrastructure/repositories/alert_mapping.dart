@@ -104,7 +104,12 @@ abstract final class AlertMapping {
         _invalid();
       }
     } else {
-      final expectedUnit = type == AlertType.temperature ? 'celsius' : 'index';
+      final expectedUnit = switch (type) {
+        AlertType.temperature => 'celsius',
+        AlertType.activity || AlertType.methane => 'index',
+        AlertType.heartRate => 'bpm',
+        AlertType.geofence => null,
+      };
       if (unit != expectedUnit ||
           detectedValue == null ||
           thresholdMinValue == null ||

@@ -64,6 +64,18 @@ void main() {
               recordedAt: time,
               isStale: false,
             ),
+            heartRate: LatestIndicator.available(
+              value: 72,
+              unit: TelemetryUnit.beatsPerMinute,
+              recordedAt: time,
+              isStale: false,
+            ),
+            methaneIndex: LatestIndicator.available(
+              value: 42.5,
+              unit: TelemetryUnit.methaneIndex,
+              recordedAt: time,
+              isStale: false,
+            ),
             ruminationMinutes: LatestIndicator.available(
               value: 1e300,
               unit: TelemetryUnit.minutes,
@@ -82,6 +94,20 @@ void main() {
           await tester.pumpAndSettle();
           final separator = language == AppLanguage.spanish ? ',' : '.';
           expect(find.text('38${separator}6 °C'), findsOneWidget);
+          expect(
+            find.text('72 ${_strings(tester).monitoringUnitBeatsPerMinute}'),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
+              '42${separator}5 ${_strings(tester).monitoringUnitIndex}',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text(_strings(tester).monitoringMethaneNote),
+            findsOneWidget,
+          );
           expect(find.text('-72${separator}1'), findsOneWidget);
           expect(find.textContaining('1E-300'), findsOneWidget);
           expect(find.textContaining('1E300'), findsOneWidget);
@@ -150,7 +176,7 @@ void main() {
       expect(find.byKey(const Key('monitoring-snapshot')), findsOneWidget);
       expect(
         find.text(strings.monitoringIndicatorUnavailable),
-        findsNWidgets(3),
+        findsNWidgets(5),
       );
       expect(find.text(strings.monitoringPositionUnavailable), findsOneWidget);
       expect(find.textContaining('0 °C'), findsNothing);
@@ -202,7 +228,7 @@ void main() {
         );
         expect(
           find.text(strings.monitoringIndicatorUnavailable),
-          findsOneWidget,
+          findsNWidgets(3),
         );
         expect(find.text(strings.monitoringOriginGateway), findsOneWidget);
         expect(find.textContaining('12.5'), findsOneWidget);
@@ -240,10 +266,6 @@ void main() {
           findsNothing,
         );
         expect(
-          find.text(strings.monitoringIndicatorUnavailable),
-          findsOneWidget,
-        );
-        expect(
           find.descendant(
             of: find.byKey(const Key('monitoring-snapshot')),
             matching: find.textContaining(
@@ -275,6 +297,18 @@ void main() {
             bodyTemperature: const HistoricalMeasurement(
               value: 38.6,
               unit: 'celsius',
+              status: HistoricalMeasurementStatus.valid,
+              invalidReason: null,
+            ),
+            heartRate: const HistoricalMeasurement(
+              value: 68,
+              unit: 'bpm',
+              status: HistoricalMeasurementStatus.valid,
+              invalidReason: null,
+            ),
+            methaneIndex: const HistoricalMeasurement(
+              value: 44.2,
+              unit: 'index',
               status: HistoricalMeasurementStatus.valid,
               invalidReason: null,
             ),
@@ -318,6 +352,17 @@ void main() {
         );
         expect(
           find.text('38${language == AppLanguage.spanish ? ',' : '.'}6 °C'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('68 ${_strings(tester).monitoringUnitBeatsPerMinute}'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            '44${language == AppLanguage.spanish ? ',' : '.'}2 '
+            '${_strings(tester).monitoringUnitIndex}',
+          ),
           findsOneWidget,
         );
         expect(
@@ -476,7 +521,10 @@ void main() {
         expect(find.textContaining('1E-12'), findsOneWidget);
         expect(find.textContaining('1E20'), findsOneWidget);
         expect(find.textContaining('180'), findsOneWidget);
-        expect(find.text(strings.monitoringIndicatorUnavailable), findsNothing);
+        expect(
+          find.text(strings.monitoringIndicatorUnavailable),
+          findsNWidgets(2),
+        );
         expect(find.text(strings.monitoringPositionUnavailable), findsNothing);
         final formatted = DateFormat.yMMMd(
           strings.localeName,

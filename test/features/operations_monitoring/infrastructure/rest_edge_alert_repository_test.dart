@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/alert_search.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/edge_alert.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/monitoring_failure.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/ranch_alert.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/infrastructure/repositories/rest_edge_alert_repository.dart';
@@ -11,6 +12,22 @@ const _otherRanchId = 'b2222222-2222-4222-8222-222222222222';
 
 void main() {
   group('RestEdgeAlertRepository', () {
+    test('maps heart-rate and methane alert types from the backend', () async {
+      final alerts = FakeAlertRepository()
+        ..pageResult = _page(1, 20, 2, [
+          _alert(_ranchId, type: AlertType.heartRate),
+          _alert(_ranchId, type: AlertType.methane),
+        ]);
+      final repository = RestEdgeAlertRepository(alerts: alerts);
+
+      final result = await repository.page(_ranchId, 1);
+
+      expect(result.items.map((alert) => alert.type), [
+        EdgeAlertType.heartRate,
+        EdgeAlertType.methane,
+      ]);
+    });
+
     test(
       'uses the authorized ranch alert read contract without acknowledging',
       () async {
@@ -96,10 +113,12 @@ void main() {
   });
 }
 
-RanchAlert _alert(String ranchId) => syntheticRanchAlert(
-  ranchId: ranchId,
-  alertId: 'a8888888-8888-4888-8888-888888888888',
-);
+RanchAlert _alert(String ranchId, {AlertType type = AlertType.temperature}) =>
+    syntheticRanchAlert(
+      ranchId: ranchId,
+      alertId: 'a8888888-8888-4888-8888-888888888888',
+      type: type,
+    );
 
 AlertPage _page(
   int page,

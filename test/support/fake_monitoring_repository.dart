@@ -73,6 +73,8 @@ LatestTelemetry syntheticLatestTelemetry({
   DateTime? evaluatedAt,
   LatestIndicator? bodyTemperature,
   LatestIndicator? activityIndex,
+  LatestIndicator? heartRate,
+  LatestIndicator? methaneIndex,
   LatestIndicator? ruminationMinutes,
   LastKnownPosition? lastKnownPosition,
 }) {
@@ -87,6 +89,12 @@ LatestTelemetry syntheticLatestTelemetry({
     activityIndex:
         activityIndex ??
         const LatestIndicator.unavailable(unit: TelemetryUnit.activityIndex),
+    heartRate:
+        heartRate ??
+        const LatestIndicator.unavailable(unit: TelemetryUnit.beatsPerMinute),
+    methaneIndex:
+        methaneIndex ??
+        const LatestIndicator.unavailable(unit: TelemetryUnit.methaneIndex),
     ruminationMinutes:
         ruminationMinutes ??
         const LatestIndicator.unavailable(unit: TelemetryUnit.minutes),
@@ -122,6 +130,8 @@ TelemetryReading syntheticTelemetryReading({
   DateTime? receivedAt,
   HistoricalMeasurement? bodyTemperature,
   HistoricalMeasurement? activityIndex,
+  HistoricalMeasurement? heartRate,
+  HistoricalMeasurement? methaneIndex,
   HistoricalMeasurement? ruminationMinutes,
   HistoricalMeasurement? batteryLevel,
   HistoricalPosition? position,
@@ -142,6 +152,22 @@ TelemetryReading syntheticTelemetryReading({
       ),
   activityIndex:
       activityIndex ??
+      const HistoricalMeasurement(
+        value: null,
+        unit: 'index',
+        status: HistoricalMeasurementStatus.absent,
+        invalidReason: null,
+      ),
+  heartRate:
+      heartRate ??
+      const HistoricalMeasurement(
+        value: null,
+        unit: 'bpm',
+        status: HistoricalMeasurementStatus.absent,
+        invalidReason: null,
+      ),
+  methaneIndex:
+      methaneIndex ??
       const HistoricalMeasurement(
         value: null,
         unit: 'index',

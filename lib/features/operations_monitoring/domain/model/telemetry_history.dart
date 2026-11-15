@@ -51,6 +51,18 @@ final class TelemetryReading {
     required this.ruminationMinutes,
     required this.batteryLevel,
     required this.position,
+    this.heartRate = const HistoricalMeasurement(
+      value: null,
+      unit: 'bpm',
+      status: HistoricalMeasurementStatus.absent,
+      invalidReason: null,
+    ),
+    this.methaneIndex = const HistoricalMeasurement(
+      value: null,
+      unit: 'index',
+      status: HistoricalMeasurementStatus.absent,
+      invalidReason: null,
+    ),
   });
 
   final String readingId;
@@ -61,6 +73,8 @@ final class TelemetryReading {
   final DateTime receivedAt;
   final HistoricalMeasurement bodyTemperature;
   final HistoricalMeasurement activityIndex;
+  final HistoricalMeasurement heartRate;
+  final HistoricalMeasurement methaneIndex;
   final HistoricalMeasurement ruminationMinutes;
   final HistoricalMeasurement batteryLevel;
   final HistoricalPosition position;

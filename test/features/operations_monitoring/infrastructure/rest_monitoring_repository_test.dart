@@ -49,6 +49,10 @@ void main() {
       expect(latest.bodyTemperature.recordedAt, isNull);
       expect(latest.bodyTemperature.isStale, isNull);
       expect(latest.activityIndex.isAvailable, isFalse);
+      expect(latest.heartRate.isAvailable, isFalse);
+      expect(latest.heartRate.unit, TelemetryUnit.beatsPerMinute);
+      expect(latest.methaneIndex.isAvailable, isFalse);
+      expect(latest.methaneIndex.unit, TelemetryUnit.methaneIndex);
       expect(latest.ruminationMinutes.isAvailable, isFalse);
       expect(latest.lastKnownPosition.isAvailable, isFalse);
       expect(repository.isConfigured, isTrue);
@@ -91,6 +95,20 @@ void main() {
             'recordedAt': '2026-11-12T12:00:00Z',
             'isStale': false,
           }
+          ..['heartRate'] = <String, Object?>{
+            'status': 'Available',
+            'value': 72,
+            'unit': 'bpm',
+            'recordedAt': '2026-11-12T12:01:00Z',
+            'isStale': false,
+          }
+          ..['methaneIndex'] = <String, Object?>{
+            'status': 'Available',
+            'value': 42.5,
+            'unit': 'index',
+            'recordedAt': '2026-11-12T12:02:00Z',
+            'isStale': false,
+          }
           ..['ruminationMinutes'] = <String, Object?>{
             'status': 'Available',
             'value': 42.5,
@@ -125,6 +143,10 @@ void main() {
         );
         expect(latest.bodyTemperature.isStale, isTrue);
         expect(latest.activityIndex.value, 0.125);
+        expect(latest.heartRate.value, 72);
+        expect(latest.heartRate.unit, TelemetryUnit.beatsPerMinute);
+        expect(latest.methaneIndex.value, 42.5);
+        expect(latest.methaneIndex.unit, TelemetryUnit.methaneIndex);
         expect(latest.ruminationMinutes.value, 42.5);
         expect(latest.lastKnownPosition.latitude, -90);
         expect(latest.lastKnownPosition.longitude, 180);
@@ -242,6 +264,22 @@ void main() {
               'value': -1,
               'unit': 'minutes',
               'recordedAt': '2026-11-12T00:00:00Z',
+              'isStale': false,
+            },
+          () => _emptySummary()
+            ..['heartRate'] = <String, Object?>{
+              'status': 'Available',
+              'value': 29,
+              'unit': 'bpm',
+              'recordedAt': '2026-11-12T12:00:00Z',
+              'isStale': false,
+            },
+          () => _emptySummary()
+            ..['methaneIndex'] = <String, Object?>{
+              'status': 'Available',
+              'value': 101,
+              'unit': 'index',
+              'recordedAt': '2026-11-12T12:00:00Z',
               'isStale': false,
             },
           () => _emptySummary()
@@ -403,6 +441,8 @@ void main() {
         expect(page.pageSize, 10);
         expect(page.totalCount, 11);
         expect(page.items.single.bodyTemperature.value, 38.6);
+        expect(page.items.single.heartRate.value, 70);
+        expect(page.items.single.methaneIndex.value, 41.5);
         expect(page.items.single.batteryLevel.status.name, 'absent');
         expect(page.items.single.position.latitude, -13.5);
       },
@@ -782,6 +822,18 @@ Map<String, Object?> _historyPayload({
         'status': 'Absent',
         'invalidReason': null,
       },
+      'heartRate': <String, Object?>{
+        'value': 70,
+        'unit': 'bpm',
+        'status': 'Valid',
+        'invalidReason': null,
+      },
+      'methaneIndex': <String, Object?>{
+        'value': 41.5,
+        'unit': 'index',
+        'status': 'Valid',
+        'invalidReason': null,
+      },
       'ruminationMinutes': <String, Object?>{
         'value': null,
         'unit': 'minutes',
@@ -818,6 +870,20 @@ Map<String, Object?> _emptySummary() => <String, Object?>{
     'isStale': null,
   },
   'activityIndex': <String, Object?>{
+    'status': 'Unavailable',
+    'value': null,
+    'unit': 'index',
+    'recordedAt': null,
+    'isStale': null,
+  },
+  'heartRate': <String, Object?>{
+    'status': 'Unavailable',
+    'value': null,
+    'unit': 'bpm',
+    'recordedAt': null,
+    'isStale': null,
+  },
+  'methaneIndex': <String, Object?>{
     'status': 'Unavailable',
     'value': null,
     'unit': 'index',

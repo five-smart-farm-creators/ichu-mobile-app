@@ -395,13 +395,12 @@ void main() {
           }),
         );
 
-        await api.postJson(
-          'ranches/223e4567-e89b-12d3-a456-426614174000/herd-advisories',
-          <String, Object?>{'reason': 'Herd health review'},
-        );
+        await api.postJson('veterinary-access-requests', <String, Object?>{
+          'ranchId': '223e4567-e89b-12d3-a456-426614174000',
+          'reason': 'Herd health review',
+        });
         await api.patchJson(
-          'ranches/223e4567-e89b-12d3-a456-426614174000/'
-          'herd-advisories/323e4567-e89b-12d3-a456-426614174000',
+          'veterinary-access-requests/323e4567-e89b-12d3-a456-426614174000',
           <String, Object?>{
             'decision': 'grant',
             'scope': 'Read',
@@ -415,12 +414,11 @@ void main() {
           'PATCH',
         ]);
         expect(requests.map((request) => request.url.path), <String>[
-          '/api/v1/ranches/223e4567-e89b-12d3-a456-426614174000/'
-              'herd-advisories',
-          '/api/v1/ranches/223e4567-e89b-12d3-a456-426614174000/'
-              'herd-advisories/323e4567-e89b-12d3-a456-426614174000',
+          '/api/v1/veterinary-access-requests',
+          '/api/v1/veterinary-access-requests/323e4567-e89b-12d3-a456-426614174000',
         ]);
         expect(jsonDecode(requests[0].body), <String, Object?>{
+          'ranchId': '223e4567-e89b-12d3-a456-426614174000',
           'reason': 'Herd health review',
         });
         expect(jsonDecode(requests[1].body), <String, Object?>{
@@ -446,11 +444,10 @@ void main() {
       );
 
       await _expectFailure(
-        api.postJson(
-          'ranches/223e4567-e89b-12d3-a456-426614174000/'
-          'herd-advisories',
-          <String, Object?>{'reason': 'Review'},
-        ),
+        api.postJson('veterinary-access-requests', <String, Object?>{
+          'ranchId': '223e4567-e89b-12d3-a456-426614174000',
+          'reason': 'Review',
+        }),
         AuthFailureCode.unknown,
       );
       expect(requestCount, 1);

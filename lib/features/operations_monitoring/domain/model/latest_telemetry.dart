@@ -1,4 +1,10 @@
-enum TelemetryUnit { celsius, activityIndex, minutes }
+enum TelemetryUnit {
+  celsius,
+  activityIndex,
+  beatsPerMinute,
+  methaneIndex,
+  minutes,
+}
 
 enum TelemetryOrigin { edgeGateway }
 
@@ -62,6 +68,12 @@ final class LatestTelemetry {
     required this.activityIndex,
     required this.ruminationMinutes,
     required this.lastKnownPosition,
+    this.heartRate = const LatestIndicator.unavailable(
+      unit: TelemetryUnit.beatsPerMinute,
+    ),
+    this.methaneIndex = const LatestIndicator.unavailable(
+      unit: TelemetryUnit.methaneIndex,
+    ),
     this.lastReadingRecordedAt,
   });
 
@@ -71,6 +83,8 @@ final class LatestTelemetry {
   final TelemetryOrigin origin;
   final LatestIndicator bodyTemperature;
   final LatestIndicator activityIndex;
+  final LatestIndicator heartRate;
+  final LatestIndicator methaneIndex;
   final LatestIndicator ruminationMinutes;
   final LastKnownPosition lastKnownPosition;
 }

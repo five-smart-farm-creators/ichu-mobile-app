@@ -649,6 +649,48 @@ void main() {
     });
   });
 
+  for (final language in AppLanguage.values) {
+    testWidgets('${language.code} renders heart-rate and methane alert types', (
+      tester,
+    ) async {
+      await _withFixture(tester, (fixture) async {
+        fixture.alerts.pageResult = _page(
+          _ranchA,
+          page: 1,
+          total: 2,
+          items: [
+            _alert(
+              _ranchA,
+              'heart-rate',
+              type: AlertType.heartRate,
+              detectedValue: 72,
+              thresholdMin: 48,
+              thresholdMax: 84,
+            ),
+            _alert(
+              _ranchA,
+              'methane',
+              type: AlertType.methane,
+              detectedValue: 55,
+              thresholdMin: 0,
+              thresholdMax: 60,
+            ),
+          ],
+        );
+        await tester.pumpWidget(_app(fixture));
+        await tester.pumpAndSettle();
+        final strings = _strings(tester);
+
+        expect(find.text(strings.alertTypeHeartRate), findsOneWidget);
+        expect(find.text(strings.alertTypeMethane), findsOneWidget);
+        await _tap(tester, find.byKey(const Key('alert-details-heart-rate')));
+        expect(find.text(strings.monitoringUnitBeatsPerMinute), findsOneWidget);
+        await _tap(tester, find.byKey(const Key('alert-details-methane')));
+        expect(find.text(strings.monitoringUnitIndex), findsOneWidget);
+      }, language: language);
+    });
+  }
+
   testWidgets(
     'pending acknowledgement fields and nullable values stay explicit',
     (tester) async {
@@ -1146,6 +1188,8 @@ RanchAlert _alert(
     AlertType.geofence => null,
     AlertType.temperature => 'celsius',
     AlertType.activity => 'index',
+    AlertType.heartRate => 'bpm',
+    AlertType.methane => 'index',
   },
   thresholdMinValue: type == AlertType.geofence ? null : thresholdMin,
   thresholdMaxValue: type == AlertType.geofence ? null : thresholdMax,
