@@ -216,6 +216,20 @@ final class _AnimalMonitoringPageState extends State<AnimalMonitoringPage> {
                   indicator: snapshot.activityIndex,
                 ),
                 _Indicator(
+                  key: const Key('monitoring-heart-rate'),
+                  title: strings.monitoringHeartRate,
+                  indicator: snapshot.heartRate,
+                ),
+                _Indicator(
+                  key: const Key('monitoring-methane-index'),
+                  title: strings.monitoringMethaneIndex,
+                  indicator: snapshot.methaneIndex,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(strings.monitoringMethaneNote),
+                ),
+                _Indicator(
                   key: const Key('monitoring-rumination'),
                   title: strings.monitoringRumination,
                   indicator: snapshot.ruminationMinutes,
@@ -490,6 +504,18 @@ final class _HistoryReadingCard extends StatelessWidget {
               measurement: reading.activityIndex,
             ),
             _HistoricalMetric(
+              label: strings.monitoringHeartRate,
+              measurement: reading.heartRate,
+            ),
+            _HistoricalMetric(
+              label: strings.monitoringMethaneIndex,
+              measurement: reading.methaneIndex,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(strings.monitoringMethaneNote),
+            ),
+            _HistoricalMetric(
               label: strings.monitoringHistoryRumination,
               measurement: reading.ruminationMinutes,
             ),
@@ -547,6 +573,7 @@ final class _HistoricalMetric extends StatelessWidget {
   String _unit(AppLocalizations strings, String unit) => switch (unit) {
     'celsius' => strings.monitoringUnitCelsius,
     'index' => strings.monitoringUnitIndex,
+    'bpm' => strings.monitoringUnitBeatsPerMinute,
     'minutes' => strings.monitoringUnitMinutes,
     'percent' => '%',
     _ => unit,
@@ -564,6 +591,8 @@ final class _Indicator extends StatelessWidget {
     final unit = switch (indicator.unit) {
       TelemetryUnit.celsius => strings.monitoringUnitCelsius,
       TelemetryUnit.activityIndex => strings.monitoringUnitIndex,
+      TelemetryUnit.beatsPerMinute => strings.monitoringUnitBeatsPerMinute,
+      TelemetryUnit.methaneIndex => strings.monitoringUnitIndex,
       TelemetryUnit.minutes => strings.monitoringUnitMinutes,
     };
     return Padding(

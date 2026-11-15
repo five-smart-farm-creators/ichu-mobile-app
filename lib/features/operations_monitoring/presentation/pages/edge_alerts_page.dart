@@ -214,6 +214,7 @@ final class _EdgeAlertCard extends StatelessWidget {
     final unit = switch (alert.unit) {
       'celsius' => strings.monitoringUnitCelsius,
       'index' => strings.monitoringUnitIndex,
+      'bpm' => strings.monitoringUnitBeatsPerMinute,
       'meters' => strings.alertUnitMeters,
       null => strings.edgeAlertNotProvided,
       final value => value,
@@ -221,6 +222,8 @@ final class _EdgeAlertCard extends StatelessWidget {
     final type = switch (alert.type) {
       EdgeAlertType.temperature => strings.alertTypeTemperature,
       EdgeAlertType.activity => strings.alertTypeActivity,
+      EdgeAlertType.heartRate => strings.alertTypeHeartRate,
+      EdgeAlertType.methane => strings.alertTypeMethane,
       EdgeAlertType.geofence => strings.alertTypeGeofence,
     };
     final severity = switch (alert.severity) {

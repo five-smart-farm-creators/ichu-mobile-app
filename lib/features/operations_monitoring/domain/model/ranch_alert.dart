@@ -1,4 +1,4 @@
-enum AlertType { temperature, activity, geofence }
+enum AlertType { temperature, activity, heartRate, methane, geofence }
 
 enum AlertSeverity { informative, warning, critical }
 

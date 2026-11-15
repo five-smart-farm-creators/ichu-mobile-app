@@ -264,6 +264,7 @@ final class _AlertCard extends StatelessWidget {
     final unit = switch (alert.unit) {
       'celsius' => strings.monitoringUnitCelsius,
       'index' => strings.monitoringUnitIndex,
+      'bpm' => strings.monitoringUnitBeatsPerMinute,
       'meters' => strings.alertUnitMeters,
       null => strings.alertNotProvided,
       final value => value,
@@ -466,6 +467,8 @@ String _nullableTime(AppLocalizations strings, DateTime? value) => value == null
 String _typeText(AppLocalizations strings, AlertType type) => switch (type) {
   AlertType.temperature => strings.alertTypeTemperature,
   AlertType.activity => strings.alertTypeActivity,
+  AlertType.heartRate => strings.alertTypeHeartRate,
+  AlertType.methane => strings.alertTypeMethane,
   AlertType.geofence => strings.alertTypeGeofence,
 };
 String _severityText(AppLocalizations strings, AlertSeverity severity) =>

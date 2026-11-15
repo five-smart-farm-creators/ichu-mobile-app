@@ -31,6 +31,8 @@ void main() {
     expect(reading.receivedAt, DateTime.utc(2026, 11, 12, 1, 0, 2));
     expect(reading.bodyTemperature.value, 38.6);
     expect(reading.activityIndex.status, HistoricalMeasurementStatus.absent);
+    expect(reading.heartRate.value, 68);
+    expect(reading.methaneIndex.value, 42.5);
     expect(
       reading.ruminationMinutes.status,
       HistoricalMeasurementStatus.invalid,
@@ -151,6 +153,18 @@ Map<String, Object?> _payload({
         'value': null,
         'unit': 'index',
         'status': 'Absent',
+        'invalidReason': null,
+      },
+      'heartRate': <String, Object?>{
+        'value': 68,
+        'unit': 'bpm',
+        'status': 'Valid',
+        'invalidReason': null,
+      },
+      'methaneIndex': <String, Object?>{
+        'value': 42.5,
+        'unit': 'index',
+        'status': 'Valid',
         'invalidReason': null,
       },
       'ruminationMinutes': <String, Object?>{

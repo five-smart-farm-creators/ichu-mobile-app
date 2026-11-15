@@ -49,7 +49,7 @@ final class EdgeAlert {
   final List<String> readingIds;
 }
 
-enum EdgeAlertType { temperature, activity, geofence }
+enum EdgeAlertType { temperature, activity, heartRate, methane, geofence }
 
 enum EdgeAlertSeverity { informative, warning, critical }
 

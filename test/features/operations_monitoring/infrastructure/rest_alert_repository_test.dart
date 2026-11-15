@@ -404,11 +404,29 @@ void main() {
               ..['distanceToBoundaryMeters'] = 0
               ..['clearedAt'] = '2026-11-12T10:00:00Z'
               ..['exitDurationSeconds'] = 0;
+        final heartRate = _alert(id: _alertId4, type: 'HeartRate')
+          ..['unit'] = 'bpm'
+          ..['detectedValue'] = 72
+          ..['thresholdMinValue'] = 48
+          ..['thresholdMaxValue'] = 84;
+        final methane = _alert(id: _alertId5, type: 'Methane')
+          ..['unit'] = 'index'
+          ..['detectedValue'] = 55
+          ..['thresholdMinValue'] = 0
+          ..['thresholdMaxValue'] = 60;
         final repository = _repository(
           harness,
           MockClient(
             (_) async => http.Response(
-              jsonEncode(_page([temperature, activity, geofence], pageSize: 3)),
+              jsonEncode(
+                _page([
+                  temperature,
+                  activity,
+                  geofence,
+                  heartRate,
+                  methane,
+                ], pageSize: 5),
+              ),
               200,
             ),
           ),
@@ -416,10 +434,10 @@ void main() {
 
         final page = await repository.search(
           _ranchA,
-          const AlertSearch(pageSize: 3),
+          const AlertSearch(pageSize: 5),
         );
 
-        expect(page.totalCount, 3);
+        expect(page.totalCount, 5);
         expect(page.items[0].type, AlertType.temperature);
         expect(page.items[0].severity, AlertSeverity.warning);
         expect(page.items[0].status, AlertStatus.pending);
@@ -444,6 +462,12 @@ void main() {
         expect(page.items[2].acknowledgedBy, isNull);
         expect(page.items[2].finding, isNull);
         expect(page.items[2].action, isNull);
+        expect(page.items[3].type, AlertType.heartRate);
+        expect(page.items[3].unit, 'bpm');
+        expect(page.items[3].detectedValue, 72);
+        expect(page.items[4].type, AlertType.methane);
+        expect(page.items[4].unit, 'index');
+        expect(page.items[4].detectedValue, 55);
       },
     );
 
@@ -822,6 +846,8 @@ const String _gatewayId = '55555555-5555-4555-8555-555555555555';
 const String _alertId = '66666666-6666-4666-8666-666666666666';
 const String _alertId2 = '77777777-7777-4777-8777-777777777777';
 const String _alertId3 = '88888888-8888-4888-8888-888888888888';
+const String _alertId4 = '99999999-9999-4999-8999-999999999998';
+const String _alertId5 = '99999999-9999-4999-8999-999999999997';
 const String _readingId = '99999999-9999-4999-8999-999999999999';
 const String _readingId2 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const String _geofenceId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';

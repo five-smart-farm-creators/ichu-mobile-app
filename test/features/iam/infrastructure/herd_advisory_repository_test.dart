@@ -103,15 +103,19 @@ void main() {
     ]);
     expect(requests.map((request) => request.url.path), <String>[
       '/api/v1/ranches',
-      '/api/v1/ranches/$_ranchId/herd-advisories',
-      '/api/v1/ranches/$_ranchId/herd-advisories',
-      '/api/v1/ranches/$_ranchId/herd-advisories/$_advisoryId',
+      '/api/v1/veterinary-access-requests',
+      '/api/v1/veterinary-access-requests',
+      '/api/v1/veterinary-access-requests/$_advisoryId',
       '/api/v1/ranches/$_ranchId/herd-advisories/grants',
     ]);
     expect(requests.first.url.queryParameters, <String, String>{
       'accessCode': 'A&B Code',
     });
+    expect(requests[2].url.queryParameters, <String, String>{
+      'ranchId': _ranchId,
+    });
     expect(jsonDecode(requests[1].body), <String, Object?>{
+      'ranchId': _ranchId,
       'reason': 'Herd health review',
     });
     expect(jsonDecode(requests[3].body), <String, Object?>{

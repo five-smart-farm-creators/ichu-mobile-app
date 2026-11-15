@@ -22,6 +22,32 @@ import '../../../support/memory_language_preferences.dart';
 const _ranchId = 'a1111111-1111-4111-8111-111111111111';
 
 void main() {
+  testWidgets('renders backend heart-rate and methane alert types', (
+    tester,
+  ) async {
+    await _withFixture(tester, (fixture) async {
+      fixture.repository.pageResult = _page([
+        _alert(suffix: '3', type: EdgeAlertType.heartRate, unit: 'bpm'),
+        _alert(suffix: '4', type: EdgeAlertType.methane, unit: 'index'),
+      ]);
+      await tester.pumpWidget(_app(fixture));
+      await tester.pumpAndSettle();
+      final strings = _strings(tester);
+
+      expect(find.textContaining(strings.alertTypeHeartRate), findsOneWidget);
+      expect(find.textContaining(strings.alertTypeMethane), findsOneWidget);
+      final heartRateCard = find.byKey(
+        const Key('edge-alert-details-a8888888-8888-4888-8888-000000000003'),
+      );
+      await tester.ensureVisible(heartRateCard);
+      await tester.pumpAndSettle();
+      await tester.tap(heartRateCard);
+      await tester.pumpAndSettle();
+      expect(find.text('40.2 bpm'), findsOneWidget);
+      expect(find.text('37.5–39.5 bpm'), findsOneWidget);
+    });
+  });
+
   testWidgets('shows an explicit empty state for a successful empty page', (
     tester,
   ) async {
@@ -213,18 +239,29 @@ Widget _app(_Fixture fixture) => ListenableBuilder(
 AppLocalizations _strings(WidgetTester tester) =>
     AppLocalizations.of(tester.element(find.byType(EdgeAlertsPage)));
 
-EdgeAlert _alert({String suffix = '1'}) => EdgeAlert(
+EdgeAlert _alert({
+  String suffix = '1',
+  EdgeAlertType type = EdgeAlertType.temperature,
+  String? unit,
+}) => EdgeAlert(
   alertId: 'a8888888-8888-4888-8888-00000000000$suffix',
   ranchId: _ranchId,
   cattleId: 'c3333333-3333-4333-8333-333333333333',
   deviceId: 'd4444444-4444-4444-8444-444444444444',
   gatewayId: 'e5555555-5555-4555-8555-555555555555',
-  type: EdgeAlertType.temperature,
+  type: type,
   severity: EdgeAlertSeverity.warning,
   raisedAt: DateTime.utc(2026, 1, 1),
   receivedAt: DateTime.utc(2026, 1, 1, 0, 0, 1),
   detectedValue: 40.2,
-  unit: 'celsius',
+  unit:
+      unit ??
+      switch (type) {
+        EdgeAlertType.temperature => 'celsius',
+        EdgeAlertType.activity || EdgeAlertType.methane => 'index',
+        EdgeAlertType.heartRate => 'bpm',
+        EdgeAlertType.geofence => null,
+      },
   thresholdMinValue: 37.5,
   thresholdMaxValue: 39.5,
   configurationRevision: 1,

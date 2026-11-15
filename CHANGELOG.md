@@ -56,8 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented authorized ranch selection, discarded access credentials, conservative expiration handling, session-only context ownership, and verified selector/native regression checks with explicit live-integration limits.
 - Added explicit, ranch-scoped synchronization for pending field records with idempotent retries and retained review decisions.
 - Added a localized, paginated ranch view of synchronized Edge Gateway alerts without adding a separate transport or alert-mutation flow.
+- Added localized heart-rate and methane alert types, latest indicators, and historical telemetry using the backend's bpm and relative 0–100 methane index (not ppm).
 
 ### Changed
+- Switched veterinary access requests, listings, and decisions from backend compatibility routes to the canonical veterinary-access-requests endpoints; retained the supported owner-initiated direct-grant route.
 - Wired offline field records into account navigation and app composition, with exact cattle lookup scoped to the currently authorized managed ranch.
 - Reused Operations Monitoring presentation formatting for both latest observations and alert events, preserving localized decimals without binary artifacts and local capture/reception instants.
 - Extended account navigation with selection-bound animal reads and ranch-scoped detail guards; documented topic-branch cleanup after confirmed merges while preserving integration/release branches and unmerged work.
