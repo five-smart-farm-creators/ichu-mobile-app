@@ -20,12 +20,14 @@ final class HerdAdvisoryPage extends StatefulWidget {
     required this.service,
     required this.selection,
     required this.onBack,
+    this.demoBannerText,
   });
 
   final LanguageService language;
   final HerdAdvisoryService service;
   final RanchSelectionService selection;
   final VoidCallback onBack;
+  final String? demoBannerText;
 
   @override
   State<HerdAdvisoryPage> createState() => _HerdAdvisoryPageState();
@@ -268,6 +270,25 @@ final class _HerdAdvisoryPageState extends State<HerdAdvisoryPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.demoBannerText case final bannerText?) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  color: const Color(0xFF754100),
+                  child: Text(
+                    bannerText,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
               Text(
                 strings.iamAdvisoryDirectGrantTitle,
                 style: theme.textTheme.titleMedium,
@@ -309,7 +330,8 @@ final class _HerdAdvisoryPageState extends State<HerdAdvisoryPage> {
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 key: const Key('advisory-direct-expiry'),
-                onPressed: _submittingDirectGrant ? null : _selectDirectExpiry,
+                onPressed:
+                    _submittingDirectGrant ? null : _selectDirectExpiry,
                 icon: const Icon(Icons.event_outlined),
                 label: Text(
                   _directGrantExpiry == null
@@ -491,10 +513,35 @@ final class _HerdAdvisoryPageState extends State<HerdAdvisoryPage> {
               ? strings.iamAdvisoryReject
               : strings.iamAdvisoryRevoke,
         ),
-        content: Text(
-          decision == HerdAdvisoryDecision.reject
-              ? strings.iamAdvisoryConfirmReject
-              : strings.iamAdvisoryConfirmRevoke,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.demoBannerText case final bannerText?) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                color: const Color(0xFF754100),
+                child: Text(
+                  bannerText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+            Text(
+              decision == HerdAdvisoryDecision.reject
+                  ? strings.iamAdvisoryConfirmReject
+                  : strings.iamAdvisoryConfirmRevoke,
+            ),
+          ],
         ),
         actions: [
           TextButton(

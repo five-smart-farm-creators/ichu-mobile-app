@@ -56,6 +56,7 @@ final class IchuApp extends StatefulWidget {
     required this.fieldRecordService,
     required this.fieldCattleDirectory,
     this.initialRoute = '/',
+    this.demoBannerText,
     this.onDispose,
   });
 
@@ -74,6 +75,7 @@ final class IchuApp extends StatefulWidget {
   final FieldRecordService fieldRecordService;
   final FieldCattleDirectory fieldCattleDirectory;
   final String initialRoute;
+  final String? demoBannerText;
   final VoidCallback? onDispose;
 
   @override
@@ -300,6 +302,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
               language: widget.language,
               service: widget.herdAdvisoryService,
               selection: widget.ranchSelection,
+              demoBannerText: widget.demoBannerText,
               onBack: () => _router.go('/account'),
             ),
           ),
@@ -457,6 +460,41 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
       locale: Locale(widget.language.current.code),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) {
+        final content = child ?? const SizedBox.shrink();
+        final bannerText = widget.demoBannerText;
+        if (bannerText == null) return content;
+        final topInset = MediaQuery.paddingOf(context).top;
+        final bannerHeight = topInset + 34;
+        return Column(
+          children: [
+            Container(
+              width: double.infinity,
+              height: bannerHeight,
+              color: const Color(0xFF754100),
+              alignment: Alignment.center,
+              padding: EdgeInsets.fromLTRB(12, topInset, 12, 0),
+              child: Text(
+                bannerText,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            Expanded(
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: content,
+              ),
+            ),
+          ],
+        );
+      },
     ),
   );
 }
