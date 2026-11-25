@@ -33,11 +33,9 @@ const _account = IamAccount(
 );
 
 void main() {
-  testWidgets(
+  _serviceTest(
     'records existing pending alerts on the first poll without announcing them',
-    (tester) async {
-      final harness = _Harness();
-      addTearDown(harness.dispose);
+    (tester, harness) async {
       harness.alerts.pageResult = _page(_ranchA, [_first]);
       harness.createService();
 
@@ -51,9 +49,10 @@ void main() {
     },
   );
 
-  testWidgets('announces each new pending alert once', (tester) async {
-    final harness = _Harness();
-    addTearDown(harness.dispose);
+  _serviceTest('announces each new pending alert once', (
+    tester,
+    harness,
+  ) async {
     harness.alerts.pageResult = _page(_ranchA, [_first]);
     harness.createService();
     await harness.initializeAndSelect(_ranchA);
@@ -67,11 +66,10 @@ void main() {
     expect(await harness.notified.read(_ranchA), [_first, _second]);
   });
 
-  testWidgets('does not announce remembered alerts again after a restart', (
+  _serviceTest('does not announce remembered alerts again after a restart', (
     tester,
+    harness,
   ) async {
-    final harness = _Harness();
-    addTearDown(harness.dispose);
     harness.alerts.pageResult = _page(_ranchA, [_first]);
     final before = harness.createService();
     await harness.initializeAndSelect(_ranchA);
@@ -87,11 +85,10 @@ void main() {
     expect(_shownIds(harness), [_second]);
   });
 
-  testWidgets('keeps only the most recent 200 announced IDs per ranch', (
+  _serviceTest('keeps only the most recent 200 announced IDs per ranch', (
     tester,
+    harness,
   ) async {
-    final harness = _Harness();
-    addTearDown(harness.dispose);
     await harness.notified.write(_ranchA, [
       for (var index = 0; index < 200; index++) 'older-$index',
     ]);
@@ -107,11 +104,9 @@ void main() {
     expect(remembered.last, _first);
   });
 
-  testWidgets(
+  _serviceTest(
     'retries the pending alerts on the next tick after a failed poll',
-    (tester) async {
-      final harness = _Harness();
-      addTearDown(harness.dispose);
+    (tester, harness) async {
       harness.alerts.pageResult = _page(_ranchA, [_first]);
       harness.createService();
       await harness.initializeAndSelect(_ranchA);
@@ -129,11 +124,10 @@ void main() {
     },
   );
 
-  testWidgets('leaves an alert unrecorded when showing it fails', (
+  _serviceTest('leaves an alert unrecorded when showing it fails', (
     tester,
+    harness,
   ) async {
-    final harness = _Harness();
-    addTearDown(harness.dispose);
     harness.alerts.pageResult = _page(_ranchA, [_first]);
     harness.createService();
     await harness.initializeAndSelect(_ranchA);
@@ -151,9 +145,10 @@ void main() {
     expect(await harness.notified.read(_ranchA), [_first, _second]);
   });
 
-  testWidgets('polls only while the app is in the foreground', (tester) async {
-    final harness = _Harness();
-    addTearDown(harness.dispose);
+  _serviceTest('polls only while the app is in the foreground', (
+    tester,
+    harness,
+  ) async {
     harness.alerts.pageResult = _page(_ranchA, [_first]);
     final service = harness.createService();
     await harness.initializeAndSelect(_ranchA);
@@ -169,11 +164,9 @@ void main() {
     expect(_shownIds(harness), [_second]);
   });
 
-  testWidgets(
+  _serviceTest(
     'stops on sign-out and treats the next login as a new first poll',
-    (tester) async {
-      final harness = _Harness();
-      addTearDown(harness.dispose);
+    (tester, harness) async {
       harness.alerts.pageResult = _page(_ranchA, [_first]);
       harness.createService();
       await harness.initializeAndSelect(_ranchA);
@@ -193,11 +186,10 @@ void main() {
     },
   );
 
-  testWidgets('ignores a response that arrives after the ranch changed', (
+  _serviceTest('ignores a response that arrives after the ranch changed', (
     tester,
+    harness,
   ) async {
-    final harness = _Harness();
-    addTearDown(harness.dispose);
     harness.alerts.pageResult = _page(_ranchA, [_first]);
     harness.createService();
     await harness.initializeAndSelect(_ranchA);
@@ -222,11 +214,10 @@ void main() {
     expect(await harness.notified.read(_ranchA), [_first]);
   });
 
-  testWidgets('does not poll without a configured alert repository', (
+  _serviceTest('does not poll without a configured alert repository', (
     tester,
+    harness,
   ) async {
-    final harness = _Harness();
-    addTearDown(harness.dispose);
     harness.alerts.configured = false;
     harness.createService();
 
@@ -261,6 +252,22 @@ RanchAccess _ranch(String id) => RanchAccess(
   region: 'Synthetic region',
   district: 'Synthetic district',
 );
+
+// The harness is disposed inside the body so the polling timer is cancelled
+// before testWidgets checks for pending timers (tear-downs run after that check).
+void _serviceTest(
+  String description,
+  Future<void> Function(WidgetTester tester, _Harness harness) body,
+) {
+  testWidgets(description, (tester) async {
+    final harness = _Harness();
+    try {
+      await body(tester, harness);
+    } finally {
+      harness.dispose();
+    }
+  });
+}
 
 final class _Harness {
   _Harness()
