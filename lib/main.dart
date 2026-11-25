@@ -1,122 +1,227 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  runApp(const MyApp());
+import 'app.dart';
+import 'core/config/app_config.dart';
+import 'features/cattle_information/application/services/cattle_management_service.dart';
+import 'features/cattle_information/application/services/cattle_read_service.dart';
+import 'features/cattle_information/application/facades/cattle_lookup_facade.dart';
+import 'features/cattle_information/infrastructure/http/cattle_api_client.dart';
+import 'features/cattle_information/infrastructure/repositories/rest_cattle_command_repository.dart';
+import 'features/cattle_information/infrastructure/repositories/rest_cattle_repository.dart';
+import 'features/iam/application/facades/authorized_ranch_session.dart';
+import 'features/iam/application/services/auth_service.dart';
+import 'features/iam/application/services/authentication_lifecycle.dart';
+import 'features/iam/application/services/herd_advisory_service.dart';
+import 'features/iam/application/services/registration_service.dart';
+import 'features/iam/application/services/professional_profile_service.dart';
+import 'features/iam/application/services/ranch_selection_service.dart';
+import 'features/iam/infrastructure/configuration/firebase_client_config.dart';
+import 'features/iam/infrastructure/http/authenticated_api_client.dart';
+import 'features/iam/infrastructure/http/herd_advisory_api_client.dart';
+import 'features/iam/infrastructure/repositories/firebase_auth_repository.dart';
+import 'features/iam/infrastructure/repositories/firebase_registration_repository.dart';
+import 'features/iam/infrastructure/repositories/iam_account_repository.dart';
+import 'features/iam/infrastructure/repositories/iam_professional_profile_repository.dart';
+import 'features/iam/infrastructure/repositories/iam_account_registration_repository.dart';
+import 'features/iam/infrastructure/repositories/rest_herd_advisory_repository.dart';
+import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'features/operations_monitoring/application/services/alert_read_service.dart';
+import 'features/operations_monitoring/application/services/edge_alert_read_service.dart';
+import 'features/operations_monitoring/application/services/waterer_read_service.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_waterer_repository.dart';
+import 'features/operations_monitoring/application/services/alert_notification_service.dart';
+import 'features/operations_monitoring/application/services/field_record_service.dart';
+import 'features/operations_monitoring/infrastructure/http/monitoring_api_client.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_monitoring_repository.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_alert_repository.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_edge_alert_repository.dart';
+import 'features/operations_monitoring/infrastructure/repositories/rest_field_record_sync_repository.dart';
+import 'features/operations_monitoring/infrastructure/adapters/field_cattle_directory_adapter.dart';
+import 'features/operations_monitoring/infrastructure/adapters/local_alert_notifier.dart';
+import 'features/operations_monitoring/infrastructure/preferences/shared_preferences_field_record_repository.dart';
+import 'features/operations_monitoring/infrastructure/preferences/shared_preferences_notified_alert_repository.dart';
+import 'shared/application/services/language_service.dart';
+import 'shared/infrastructure/preferences/device_language_preference_repository.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  _registerFontLicenses();
+  final language = LanguageService(
+    DeviceLanguagePreferenceRepository(SharedPreferencesAsync()),
+  );
+  await language.initialize();
+  final config = AppConfig.fromEnvironment();
+  final platform = switch (defaultTargetPlatform) {
+    TargetPlatform.android when !kIsWeb => FirebaseNativePlatform.android,
+    TargetPlatform.iOS when !kIsWeb => FirebaseNativePlatform.ios,
+    _ => FirebaseNativePlatform.unsupported,
+  };
+  final firebaseConfig = FirebaseClientConfig.fromEnvironment(platform);
+  final identity = AuthenticationLifecycle(
+    await FirebaseAuthRepository.initialize(firebaseConfig),
+  );
+  final registrationIdentity = AuthenticationLifecycle(
+    await FirebaseRegistrationRepository.initialize(firebaseConfig),
+  );
+  final client = http.Client();
+  final registration = RegistrationService(
+    authentication: registrationIdentity,
+    accounts: IamAccountRegistrationRepository(
+      api: config.isApiConfigured
+          ? AuthenticatedApiClient(
+              baseUri: config.apiBaseUri!,
+              client: client,
+              authentication: registrationIdentity,
+              languageTag: () =>
+                  language.current.code == 'es' ? 'es-419' : 'en-US',
+            )
+          : null,
+    ),
+  );
+  final api = config.isApiConfigured
+      ? AuthenticatedApiClient(
+          baseUri: config.apiBaseUri!,
+          client: client,
+          authentication: identity,
+          languageTag: () => language.current.code == 'es' ? 'es-419' : 'en-US',
+        )
+      : null;
+  final authentication = AuthService(
+    authentication: identity,
+    accounts: IamAccountRepository(api: api),
+  );
+  final profileService = ProfessionalProfileService(
+    session: authentication,
+    profiles: IamProfessionalProfileRepository(api: api),
+  );
+  final ranchSelection = RanchSelectionService(session: authentication);
+  final ranchAccess = AuthorizedRanchSession(
+    session: authentication,
+    selection: ranchSelection,
+    authentication: identity,
+  );
+  final cattleApi = config.isApiConfigured
+      ? CattleApiClient(
+          baseUri: config.apiBaseUri!,
+          client: client,
+          session: ranchAccess,
+          languageTag: () => language.current.code == 'es' ? 'es-419' : 'en-US',
+        )
+      : null;
+  final cattleRepository = RestCattleRepository(api: cattleApi);
+  final cattleService = CattleReadService(
+    access: ranchAccess,
+    cattle: cattleRepository,
+  );
+  final fieldCattleDirectory = FieldCattleDirectoryAdapter(
+    lookup: CattleLookupFacade(access: ranchAccess, cattle: cattleRepository),
+  );
+  final cattleManagementService = CattleManagementService(
+    access: ranchAccess,
+    commands: RestCattleCommandRepository(api: cattleApi),
+  );
+  final herdAdvisoryService = HerdAdvisoryService(
+    advisories: RestHerdAdvisoryRepository(
+      api: HerdAdvisoryApiClient(api: api, session: ranchAccess),
+    ),
+    selection: ranchSelection,
+  );
+  final monitoringApi = config.isApiConfigured
+      ? MonitoringApiClient(
+          baseUri: config.apiBaseUri!,
+          client: client,
+          session: ranchAccess,
+          languageTag: () => language.current.code == 'es' ? 'es-419' : 'en-US',
+        )
+      : null;
+  final monitoringService = MonitoringReadService(
+    access: ranchAccess,
+    monitoring: RestMonitoringRepository(api: monitoringApi),
+  );
+  final fieldRecordService = FieldRecordService(
+    access: ranchAccess,
+    repository: SharedPreferencesFieldRecordRepository(
+      SharedPreferencesAsync(),
+    ),
+    syncRepository: RestFieldRecordSyncRepository(api: monitoringApi),
+  );
+  final alertRepository = RestAlertRepository(api: monitoringApi);
+  final alertService = AlertReadService(
+    access: ranchAccess,
+    alerts: alertRepository,
+  );
+  final edgeAlertService = EdgeAlertReadService(
+    access: ranchAccess,
+    edgeAlerts: RestEdgeAlertRepository(alerts: alertRepository),
+  );
+  final alertNotifications = AlertNotificationService(
+    access: ranchAccess,
+    alerts: alertRepository,
+    notifier: LocalAlertNotifier(
+      plugin: FlutterLocalNotificationsPlugin(),
+      locale: () => Locale(language.current.code),
+    ),
+    notified: SharedPreferencesNotifiedAlertRepository(
+      SharedPreferencesAsync(),
+    ),
+  );
+  final watererService = WatererReadService(
+    access: ranchAccess,
+    waterers: RestWatererRepository(api: monitoringApi),
+  );
+  runApp(
+    IchuApp(
+      language: language,
+      authentication: authentication,
+      registration: registration,
+      profileService: profileService,
+      ranchSelection: ranchSelection,
+      cattleService: cattleService,
+      herdAdvisoryService: herdAdvisoryService,
+      cattleManagementService: cattleManagementService,
+      monitoringService: monitoringService,
+      alertService: alertService,
+      alertNotifications: alertNotifications,
+      edgeAlertService: edgeAlertService,
+      watererService: watererService,
+      fieldRecordService: fieldRecordService,
+      fieldCattleDirectory: fieldCattleDirectory,
+      onDispose: () {
+        watererService.dispose();
+        edgeAlertService.dispose();
+        alertNotifications.dispose();
+        alertService.dispose();
+        fieldRecordService.dispose();
+        monitoringService.dispose();
+        cattleManagementService.dispose();
+        cattleService.dispose();
+        ranchAccess.dispose();
+        profileService.dispose();
+        ranchSelection.dispose();
+        authentication.dispose();
+        registration.dispose();
+        identity.dispose();
+        registrationIdentity.dispose();
+        client.close();
+        language.dispose();
+      },
+    ),
+  );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+void _registerFontLicenses() {
+  for (final (family, folder) in [
+    ('Outfit', 'outfit'),
+    ('Plus Jakarta Sans', 'plus_jakarta_sans'),
+  ]) {
+    LicenseRegistry.addLicense(() async* {
+      final text = await rootBundle.loadString('assets/fonts/$folder/OFL.txt');
+      yield LicenseEntryWithLineBreaks([family], text);
     });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
-    );
   }
 }
