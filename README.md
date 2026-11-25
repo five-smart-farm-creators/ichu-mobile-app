@@ -38,6 +38,10 @@ flutter build apk --release --dart-define-from-file=config/android.json
 
 Release builds are still signed with the debug key (see the TODO in `android/app/build.gradle.kts`); add a release signing configuration before distributing outside the team.
 
+## Test builds
+
+The `Test builds` workflow builds a release APK and an unsigned IPA on every pull request (or on demand) with the production config stored in the `ICHU_ANDROID_CONFIG` and `ICHU_IOS_CONFIG` repository secrets. Download them from the run's artifacts. The APK installs directly; the IPA must be re-signed with a tester's Apple ID, and a free Apple ID install expires after 7 days.
+
 ## Android and iOS
 
 - Firebase needs one Android app with package `com.smartfarm.ichu` and one iOS app with bundle ID `com.smartfarm.ichu` in the Firebase project. Put their app IDs in the `--dart-define-from-file` JSON as `ICHU_FIREBASE_ANDROID_APP_ID` and `ICHU_FIREBASE_IOS_APP_ID`; the iOS bundle ID goes in `ICHU_FIREBASE_IOS_BUNDLE_ID`.

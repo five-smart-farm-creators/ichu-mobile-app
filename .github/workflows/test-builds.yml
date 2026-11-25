@@ -1,0 +1,72 @@
+name: Test builds
+
+# Installable builds for team testing against production; the config comes from repository secrets.
+on:
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.44.6"
+          cache: true
+
+      - name: Write production config
+        env:
+          CONFIG: ${{ secrets.ICHU_ANDROID_CONFIG }}
+        run: |
+          if [ -n "$CONFIG" ]; then printf '%s' "$CONFIG" > config/build.json; else cp config/production.example.json config/build.json; fi
+
+      - name: Build release APK
+        run: flutter build apk --release --dart-define-from-file=config/build.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ichu-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+
+  ios-ipa:
+    # Unsigned: testers re-sign it with their own Apple ID (for example with Sideloadly).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.44.6"
+          cache: true
+
+      - name: Write production config
+        env:
+          CONFIG: ${{ secrets.ICHU_IOS_CONFIG }}
+        run: |
+          if [ -n "$CONFIG" ]; then printf '%s' "$CONFIG" > config/build.json; else cp config/production.example.json config/build.json; fi
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign --dart-define-from-file=config/build.json
+
+      - name: Package IPA
+        run: |
+          mkdir -p build/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/
+          cd build/ipa && zip -qr ichu-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ichu-ios-unsigned-ipa
+          path: build/ipa/ichu-unsigned.ipa
+          retention-days: 14
