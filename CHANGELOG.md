@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-25
+
 ### Added
 - Authorized, paginated historical telemetry for a selected animal, with bounded time ranges, validated capture status, and EN/ES date, metric, and empty-state presentation.
 - Persisted offline field records and previously authorized cattle choices, isolated by account and ranch and retained when signing out or changing context.
