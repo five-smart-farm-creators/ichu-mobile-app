@@ -175,9 +175,10 @@ pumpApp(
   );
   final alerts = FakeAlertRepository();
   final alertService = AlertReadService(access: ranchAccess, alerts: alerts);
+  // Polling is covered by its own tests; here it would leave a periodic timer pending.
   final alertNotifications = AlertNotificationService(
     access: ranchAccess,
-    alerts: FakeAlertRepository(),
+    alerts: FakeAlertRepository()..configured = false,
     notifier: FakeAlertNotifier(),
     notified: MemoryNotifiedAlertRepository(),
   );
