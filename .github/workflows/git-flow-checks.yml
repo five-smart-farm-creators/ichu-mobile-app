@@ -80,7 +80,7 @@ jobs:
         run: flutter test
 
   flutter-ios:
-    # Proves the iOS target compiles; signing and device delivery are not verified here.
+    # Simulator builds compile the iOS target without an Apple signing team.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,5 +94,5 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build iOS without codesigning
-        run: flutter build ios --debug --no-codesign
+      - name: Build iOS for the simulator
+        run: flutter build ios --simulator --debug

@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added foreground notifications for new pending cloud alerts on Android and iOS, using flutter_local_notifications: each alert is announced once, titled by severity, remembered per ranch across restarts, and tapping it opens the ranch alerts page.
 - Added a production build configuration with a committed `config/production.example.json` template, documented run and release commands, and an acceptance test for the production Render API URL.
 - Added the Android notification permission, Java 17 core library desugaring, and compileSdk 37 required by the notifications plugin, plus the iOS notification setup in the app delegate.
-- Added a Flutter CI job that resolves dependencies, analyzes, and runs tests on Ubuntu, and an iOS build check on macOS that proves the target compiles without codesigning.
+- Added a Flutter CI job that resolves dependencies, analyzes, and runs tests on Ubuntu, and an iOS simulator build check on macOS that compiles the target without an Apple signing team.
 
 ### Changed
 - Switched veterinary access requests, listings, and decisions from backend compatibility routes to the canonical veterinary-access-requests endpoints; retained the supported owner-initiated direct-grant route.
