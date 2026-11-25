@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added a test-build workflow that publishes a production APK and an unsigned IPA as run artifacts for team testing.
+
 ## [0.2.0] - 2026-11-25
 
 ### Added
