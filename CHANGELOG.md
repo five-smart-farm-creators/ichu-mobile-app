@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added explicit, ranch-scoped synchronization for pending field records with idempotent retries and retained review decisions.
 - Added a localized, paginated ranch view of synchronized Edge Gateway alerts without adding a separate transport or alert-mutation flow.
 - Added localized heart-rate and methane alert types, latest indicators, and historical telemetry using the backend's bpm and relative 0–100 methane index (not ppm).
+- Added foreground notifications for new pending cloud alerts on Android and iOS, using flutter_local_notifications: each alert is announced once, titled by severity, remembered per ranch across restarts, and tapping it opens the ranch alerts page.
+- Added a production build configuration with a committed `config/production.example.json` template, documented run and release commands, and an acceptance test for the production Render API URL.
+- Added the Android notification permission, Java 17 core library desugaring, and compileSdk 37 required by the notifications plugin, plus the iOS notification setup in the app delegate.
+- Added a Flutter CI job that resolves dependencies, analyzes, and runs tests on Ubuntu, and an iOS build check on macOS that proves the target compiles without codesigning.
 
 ### Changed
 - Switched veterinary access requests, listings, and decisions from backend compatibility routes to the canonical veterinary-access-requests endpoints; retained the supported owner-initiated direct-grant route.
@@ -70,6 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Aligned account access with backend authorization and time-based block expiry instead of copying the unfinished web client's status-label restriction; the account view reports server-validated access without relabeling stored status.
 - Raised the minimum iOS deployment target to 15.0 to meet the Firebase plugins' requirements; Android network access is declared and local cleartext API traffic is debug-only.
 - Replaced the starter counter and temporary unauthenticated preview with web-aligned IAM pages, stable guarded routing, and session revalidation when the app resumes.
+- Renamed the Android application ID and iOS bundle identifier from the template defaults to `com.smartfarm.ichu` (iOS tests use `com.smartfarm.ichu.RunnerTests`), moving the Android entry activity to the matching package.
+- Raised the Android Gradle Plugin to 9.1.1 and the Gradle wrapper to 9.3.1, the versions the notifications plugin documents.
+- Alert type names now come from one localized helper shared by the alert list and notifications, so both show the same labels.
 
 ### Fixed
 - Deferred initial animal-page reads until after widget construction so covered list/profile listeners are not notified during nested navigation builds.

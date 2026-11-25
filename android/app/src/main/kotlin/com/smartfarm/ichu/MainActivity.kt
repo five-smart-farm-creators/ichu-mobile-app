@@ -1,4 +1,4 @@
-package com.example.ichu_mobile_app
+package com.smartfarm.ichu
 
 import io.flutter.embedding.android.FlutterActivity
 

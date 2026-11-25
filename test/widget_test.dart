@@ -30,6 +30,7 @@ import 'package:ichu_mobile_app/features/iam/presentation/pages/session_account_
 import 'package:ichu_mobile_app/features/iam/presentation/pages/herd_advisory_page.dart';
 import 'package:ichu_mobile_app/shared/infrastructure/i18n/generated/app_localizations.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'package:ichu_mobile_app/features/operations_monitoring/application/services/alert_notification_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/alert_read_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/application/services/edge_alert_read_service.dart';
 import 'package:ichu_mobile_app/features/operations_monitoring/domain/model/edge_alert.dart';
@@ -49,7 +50,9 @@ import 'support/fake_iam_repositories.dart';
 import 'support/fake_cattle_command_repository.dart';
 import 'support/fake_cattle_repository.dart';
 import 'support/fake_monitoring_repository.dart';
+import 'support/fake_alert_notifier.dart';
 import 'support/fake_alert_repository.dart';
+import 'support/memory_notified_alert_repository.dart';
 import 'support/fake_edge_alert_repository.dart';
 import 'support/fake_herd_advisory_repository.dart';
 import 'support/fake_registration_repositories.dart';
@@ -172,6 +175,12 @@ pumpApp(
   );
   final alerts = FakeAlertRepository();
   final alertService = AlertReadService(access: ranchAccess, alerts: alerts);
+  final alertNotifications = AlertNotificationService(
+    access: ranchAccess,
+    alerts: FakeAlertRepository(),
+    notifier: FakeAlertNotifier(),
+    notified: MemoryNotifiedAlertRepository(),
+  );
   final edgeAlerts = FakeEdgeAlertRepository();
   final edgeAlertService = EdgeAlertReadService(
     access: ranchAccess,
@@ -204,6 +213,7 @@ pumpApp(
   addTearDown(() async {
     watererService.dispose();
     edgeAlertService.dispose();
+    alertNotifications.dispose();
     alertService.dispose();
     fieldRecordService.dispose();
     monitoringService.dispose();
@@ -232,6 +242,7 @@ pumpApp(
       cattleManagementService: cattleManagementService,
       monitoringService: monitoringService,
       alertService: alertService,
+      alertNotifications: alertNotifications,
       edgeAlertService: edgeAlertService,
       watererService: watererService,
       fieldRecordService: fieldRecordService,

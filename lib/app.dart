@@ -25,6 +25,7 @@ import 'features/iam/presentation/pages/ranch_selection_page.dart';
 import 'features/iam/presentation/pages/session_account_page.dart';
 import 'features/iam/presentation/pages/herd_advisory_page.dart';
 import 'features/operations_monitoring/application/services/monitoring_read_service.dart';
+import 'features/operations_monitoring/application/services/alert_notification_service.dart';
 import 'features/operations_monitoring/application/services/alert_read_service.dart';
 import 'features/operations_monitoring/application/services/edge_alert_read_service.dart';
 import 'features/operations_monitoring/presentation/pages/animal_monitoring_page.dart';
@@ -51,6 +52,7 @@ final class IchuApp extends StatefulWidget {
     required this.cattleManagementService,
     required this.monitoringService,
     required this.alertService,
+    required this.alertNotifications,
     required this.edgeAlertService,
     required this.watererService,
     required this.fieldRecordService,
@@ -69,6 +71,7 @@ final class IchuApp extends StatefulWidget {
   final CattleManagementService cattleManagementService;
   final MonitoringReadService monitoringService;
   final AlertReadService alertService;
+  final AlertNotificationService alertNotifications;
   final EdgeAlertReadService edgeAlertService;
   final WatererReadService watererService;
   final FieldRecordService fieldRecordService;
@@ -82,18 +85,24 @@ final class IchuApp extends StatefulWidget {
 
 final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
   late GoRouter _router;
+  late StreamSubscription<void> _alertTaps;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _router = _createRouter();
+    _alertTaps = _subscribeToAlertTaps();
     unawaited(widget.authentication.initialize());
   }
 
   @override
   void didUpdateWidget(covariant IchuApp oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.alertNotifications != widget.alertNotifications) {
+      unawaited(_alertTaps.cancel());
+      _alertTaps = _subscribeToAlertTaps();
+    }
     if (oldWidget.authentication != widget.authentication ||
         oldWidget.ranchSelection != widget.ranchSelection ||
         oldWidget.cattleService != widget.cattleService ||
@@ -114,11 +123,17 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     widget.watererService.setActive(state == AppLifecycleState.resumed);
+    widget.alertNotifications.setActive(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed &&
         widget.authentication.status == SessionStatus.authenticated) {
       unawaited(widget.authentication.refresh());
     }
   }
+
+  StreamSubscription<void> _subscribeToAlertTaps() => widget
+      .alertNotifications
+      .taps
+      .listen((_) => _router.go('/account/alerts'));
 
   void _backFromTerms() {
     if (_router.canPop()) {
@@ -440,6 +455,7 @@ final class _IchuAppState extends State<IchuApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_alertTaps.cancel());
     _router.dispose();
     widget.onDispose?.call();
     super.dispose();
