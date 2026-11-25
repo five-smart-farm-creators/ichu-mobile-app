@@ -10,6 +10,7 @@ import '../../domain/model/alert_search.dart';
 import '../../domain/model/alert_acknowledgement_result.dart';
 import '../../domain/model/monitoring_failure.dart';
 import '../../domain/model/ranch_alert.dart';
+import '../../infrastructure/i18n/alert_type_labels.dart';
 import '../widgets/monitoring_format.dart';
 import '../widgets/alert_acknowledgement_dialog.dart';
 
@@ -283,7 +284,7 @@ final class _AlertCard extends StatelessWidget {
                   Semantics(
                     header: true,
                     child: Text(
-                      _typeText(strings, alert.type),
+                      alertTypeLabel(strings, alert.type),
                       style: theme.textTheme.titleLarge,
                     ),
                   ),
@@ -464,13 +465,6 @@ String _nullableNumber(AppLocalizations strings, double? value) => value == null
 String _nullableTime(AppLocalizations strings, DateTime? value) => value == null
     ? strings.alertNotProvided
     : MonitoringFormat.instant(strings, value);
-String _typeText(AppLocalizations strings, AlertType type) => switch (type) {
-  AlertType.temperature => strings.alertTypeTemperature,
-  AlertType.activity => strings.alertTypeActivity,
-  AlertType.heartRate => strings.alertTypeHeartRate,
-  AlertType.methane => strings.alertTypeMethane,
-  AlertType.geofence => strings.alertTypeGeofence,
-};
 String _severityText(AppLocalizations strings, AlertSeverity severity) =>
     switch (severity) {
       AlertSeverity.informative => strings.alertSeverityInformative,

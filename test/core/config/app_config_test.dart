@@ -41,6 +41,14 @@ void main() {
             expectedIssue: null,
           ),
           (
+            description: 'accepts the production Render API URL',
+            environment: 'production',
+            apiBaseUrl: 'https://ichu-web-service.onrender.com/api/v1',
+            expectedEnvironment: AppEnvironment.production,
+            expectedUri: 'https://ichu-web-service.onrender.com/api/v1',
+            expectedIssue: null,
+          ),
+          (
             description: 'adds the versioned path to an unversioned HTTPS URL',
             environment: 'staging',
             apiBaseUrl: 'https://api.example.test',

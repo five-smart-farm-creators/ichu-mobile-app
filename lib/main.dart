@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,6 +34,7 @@ import 'features/operations_monitoring/application/services/alert_read_service.d
 import 'features/operations_monitoring/application/services/edge_alert_read_service.dart';
 import 'features/operations_monitoring/application/services/waterer_read_service.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_waterer_repository.dart';
+import 'features/operations_monitoring/application/services/alert_notification_service.dart';
 import 'features/operations_monitoring/application/services/field_record_service.dart';
 import 'features/operations_monitoring/infrastructure/http/monitoring_api_client.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_monitoring_repository.dart';
@@ -40,7 +42,9 @@ import 'features/operations_monitoring/infrastructure/repositories/rest_alert_re
 import 'features/operations_monitoring/infrastructure/repositories/rest_edge_alert_repository.dart';
 import 'features/operations_monitoring/infrastructure/repositories/rest_field_record_sync_repository.dart';
 import 'features/operations_monitoring/infrastructure/adapters/field_cattle_directory_adapter.dart';
+import 'features/operations_monitoring/infrastructure/adapters/local_alert_notifier.dart';
 import 'features/operations_monitoring/infrastructure/preferences/shared_preferences_field_record_repository.dart';
+import 'features/operations_monitoring/infrastructure/preferences/shared_preferences_notified_alert_repository.dart';
 import 'shared/application/services/language_service.dart';
 import 'shared/infrastructure/preferences/device_language_preference_repository.dart';
 
@@ -155,6 +159,17 @@ Future<void> main() async {
     access: ranchAccess,
     edgeAlerts: RestEdgeAlertRepository(alerts: alertRepository),
   );
+  final alertNotifications = AlertNotificationService(
+    access: ranchAccess,
+    alerts: alertRepository,
+    notifier: LocalAlertNotifier(
+      plugin: FlutterLocalNotificationsPlugin(),
+      locale: () => Locale(language.current.code),
+    ),
+    notified: SharedPreferencesNotifiedAlertRepository(
+      SharedPreferencesAsync(),
+    ),
+  );
   final watererService = WatererReadService(
     access: ranchAccess,
     waterers: RestWatererRepository(api: monitoringApi),
@@ -171,6 +186,7 @@ Future<void> main() async {
       cattleManagementService: cattleManagementService,
       monitoringService: monitoringService,
       alertService: alertService,
+      alertNotifications: alertNotifications,
       edgeAlertService: edgeAlertService,
       watererService: watererService,
       fieldRecordService: fieldRecordService,
@@ -178,6 +194,7 @@ Future<void> main() async {
       onDispose: () {
         watererService.dispose();
         edgeAlertService.dispose();
+        alertNotifications.dispose();
         alertService.dispose();
         fieldRecordService.dispose();
         monitoringService.dispose();
